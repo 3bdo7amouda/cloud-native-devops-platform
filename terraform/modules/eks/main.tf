@@ -40,8 +40,9 @@ resource "aws_eks_node_group" "this" {
 }
 
 resource "aws_eks_addon" "vpc_cni" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "vpc-cni"
+  cluster_name  = aws_eks_cluster.this.name
+  addon_name    = "vpc-cni"
+  addon_version = "v1.21.1-eksbuild.3"
 }
 
 resource "aws_eks_addon" "coredns" {

@@ -17,8 +17,8 @@ tags = {
 cluster_name    = "nonprod-eks"
 cluster_version = "1.35"
 
-node_desired    = 1
-node_min        = 1
-node_max        = 2
-instance_types  = ["t3.medium"]
-capacity_type   = "ON_DEMAND"
+node_desired   = 1
+node_min       = 1
+node_max       = 2
+instance_types = ["t3.medium"]
+capacity_type  = "ON_DEMAND"

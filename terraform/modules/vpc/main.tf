@@ -20,7 +20,7 @@ resource "aws_subnet" "public" {
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-public-${var.azs[count.index]}" })
 
-    lifecycle {
+  lifecycle {
     create_before_destroy = true
   }
 }
@@ -33,7 +33,7 @@ resource "aws_subnet" "private" {
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-private-${var.azs[count.index]}" })
 
-    lifecycle {
+  lifecycle {
     create_before_destroy = true
   }
 }
