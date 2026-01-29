@@ -1,6 +1,7 @@
 # Terraform
 *.tfstate
 *.tfstate.*
+*.tfstate.backup
 .terraform/
 crash.log
 crash.*.log
@@ -8,6 +9,13 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+errored.tfstate  # Add this
+
+# Sensitive files
+*.tfvars
+!terraform.tfvars.example  # Allow example file
+!nonprod.tfvars            # If you want to commit env configs
+!prod.tfvars
 
 # AWS
 .aws/
@@ -28,7 +36,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Environment variables
+# Environment
 .env
 .env.local
 
