@@ -13,3 +13,12 @@ tags = {
   env     = "prod"
   project = "cloud-native-devops-platform"
 }
+
+cluster_name    = "prod-eks"
+cluster_version = "1.35"
+
+node_desired    = 2
+node_min        = 2
+node_max        = 4
+instance_types  = ["t3.large"]
+capacity_type   = "ON_DEMAND"
