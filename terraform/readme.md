@@ -2,25 +2,28 @@
 
 > **Stage 1** of Cloud-Native DevOps Platform
 
-This directory contains Terraform configuration for provisioning the AWS infrastructure foundation.
+Terraform configuration for AWS infrastructure: VPC, EKS cluster, IAM roles, and Kubernetes addons.
 
 ---
 
-## 📋 What Gets Provisioned
+## 📋 What Gets Deployed
 
-### VPC Module
-- **VPC** with DNS support and hostnames enabled
-- **Internet Gateway** for public internet access
-- **Public Subnets** (2) across multiple AZs with auto-assign public IP
-- **Private Subnets** (2) across multiple AZs for internal resources
-- **NAT Gateway** with Elastic IP for private subnet internet access
-- **Route Tables** for public and private subnets
+### Networking (VPC Module)
+- VPC with public/private subnets across 2 AZs
+- Internet Gateway + NAT Gateway
+- Route tables with proper associations
+- Kubernetes subnet tags for load balancers
 
-### Planned (Not Yet Implemented)
-- EKS Cluster with Fargate & Managed Node Groups
-- IAM Roles and Policies
-- Security Groups
-- Additional networking components
+### Security (IAM Module)
+- EKS cluster IAM role
+- Node group IAM role with required policies
+- SSM access for node debugging
+
+### Kubernetes (EKS Module)
+- EKS cluster (v1.35) with public/private endpoints
+- Managed node group (auto-scaling, latest Amazon Linux 2)
+- Essential addons: vpc-cni, kube-proxy, coredns, ebs-csi-driver
+- CloudWatch logging enabled
 
 ---
 
@@ -28,45 +31,52 @@ This directory contains Terraform configuration for provisioning the AWS infrast
 
 ```
 terraform/
-├── main.tf                 # Root module - calls VPC module
-├── variables.tf            # Root variables
-├── outputs.tf              # Root outputs
-├── providers.tf            # AWS provider configuration
-├── backend.tf              # S3 backend with state locking
-├── nonprod.tfvars          # Non-production environment values
-├── prod.tfvars             # Production environment values (future)
+├── main.tf                 # Orchestrates all modules
+├── variables.tf            # Variable declarations
+├── outputs.tf              # Exposed outputs
+├── providers.tf            # AWS provider config
+├── backend.tf              # S3 remote state
+├── nonprod.tfvars          # Non-prod environment
+├── prod.tfvars             # Prod environment
 └── modules/
-    └── vpc/
-        ├── main.tf         # VPC resources
-        ├── variables.tf    # VPC module variables
-        └── outputs.tf      # VPC module outputs
+    ├── vpc/                # Networking resources
+    ├── iam/                # IAM roles & policies
+    └── eks/                # EKS cluster & nodes
 ```
 
 ---
 
 ## 🔧 Prerequisites
 
-- **Terraform** >= 1.6.0
-- **AWS CLI** configured with credentials
-- **AWS Account** with appropriate permissions
-- **S3 Bucket** for state storage: `cloud-native-devops-platform-terraform-bucket`
+- Terraform >= 1.6.0
+- AWS CLI >= 2.0
+- kubectl >= 1.35
+- AWS account with admin access
 
 ---
 
-## ⚙️ AWS Configuration
+## 🚀 Quick Start
 
-### Profile Setup
+### 1. Setup AWS Credentials
 
-Credentials are configured to use an assumed role:
+Create permanent IAM user credentials and configure AWS CLI:
 
-**`~/.aws/credentials`**
-```ini
-[default]
-aws_access_key_id = YOUR_ACCESS_KEY
-aws_secret_access_key = YOUR_SECRET_KEY
+```bash
+# Configure credentials
+nano ~/.aws/credentials
 ```
 
-**`~/.aws/config`**
+```ini
+[default]
+aws_access_key_id = YOUR_ACCESS_KEY_ID
+aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
+```
+
+```bash
+# Configure role assumption
+nano ~/.aws/config
+```
+
 ```ini
 [default]
 region = us-east-1
@@ -77,160 +87,176 @@ source_profile = default
 region = us-east-1
 ```
 
-### Set Profile
 ```bash
-export AWS_PROFILE=devops-role
+# Set profile permanently
+echo 'export AWS_PROFILE=devops-role' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Verify:**
+```bash
+aws sts get-caller-identity
+# Should show the assumed role ARN
 ```
 
 ---
 
-## 🚀 Usage
+### 2. Create S3 Backend (One-time)
 
-### Initialize Terraform
 ```bash
-terraform init
+BUCKET="cloud-native-devops-platform-terraform-bucket"
+
+# Create bucket with versioning and encryption
+aws s3api create-bucket --bucket $BUCKET --region us-east-1
+aws s3api put-bucket-versioning --bucket $BUCKET --versioning-configuration Status=Enabled
+aws s3api put-bucket-encryption --bucket $BUCKET \
+  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
 ```
 
-### Plan Changes
+---
+
+### 3. Deploy Infrastructure
+
 ```bash
-# For nonprod environment
+cd ~/cloud-native-devops-platform/terraform
+
+# Initialize
+terraform init
+
+# Preview changes
 terraform plan -var-file=nonprod.tfvars
 
-# For prod environment (when ready)
-terraform plan -var-file=prod.tfvars
-```
-
-### Apply Infrastructure
-```bash
-# Nonprod
+# Deploy
 terraform apply -var-file=nonprod.tfvars
-
-# With auto-approve
-terraform apply -var-file=nonprod.tfvars --auto-approve
-```
-
-### Destroy Infrastructure
-```bash
-terraform destroy -var-file=nonprod.tfvars
 ```
 
 ---
 
-## 📝 Configuration Files
+### 4. Access EKS Cluster
 
-### nonprod.tfvars
-Contains environment-specific values for non-production:
-- VPC CIDR blocks
-- Subnet configurations
-- Availability zones
-- Resource tags
+```bash
+# Configure kubectl
+aws eks update-kubeconfig \
+  --name nonprod-eks \
+  --region us-east-1
 
-### backend.tf
-S3 backend configuration:
-- **Bucket**: `cloud-native-devops-platform-terraform-bucket`
-- **Region**: `us-east-1`
-- **Encryption**: Enabled
-- **State Locking**: S3 native locking (`use_lockfile = true`)
+# Verify
+kubectl get nodes
+kubectl get pods -A
+```
+
+---
+
+## 📝 Configuration
+
+
+## nonprod.tfvars (Development)
+
+## prod.tfvars (Production)
+
+
+## 📊 Outputs
+
+```bash
+# View all outputs
+terraform output
+
+# Common outputs
+terraform output vpc_id
+terraform output cluster_endpoint
+terraform output -raw cluster_name
+```
+
+| Output | Description |
+|--------|-------------|
+| `vpc_id` | VPC identifier |
+| `public_subnet_ids` | Public subnet IDs |
+| `private_subnet_ids` | Private subnet IDs |
+| `cluster_name` | EKS cluster name |
+| `cluster_endpoint` | Kubernetes API endpoint |
+| `oidc_issuer_url` | For IAM roles for service accounts |
 
 ---
 
 ## 🔒 State Management
 
-### Remote State (S3)
-- State file stored in S3 for team collaboration
-- Encryption at rest enabled
-- Native S3 state locking (no DynamoDB needed)
+**Backend:** S3 with encryption and versioning
 
-### State Lock
-If you encounter a state lock issue:
+**Common operations:**
 ```bash
+# List resources
+terraform state list
+
+# Refresh state
+terraform refresh -var-file=nonprod.tfvars
+
+# Force unlock (if crashed)
 terraform force-unlock <LOCK_ID>
 ```
-
----
-
-## 📊 Outputs
-
-After applying, you can view outputs:
-
-```bash
-terraform output
-
-# Specific output
-terraform output vpc_id
-terraform output public_subnet_ids
-```
-
----
-
-## 🏷️ Tagging Strategy
-
-All resources are tagged with:
-- `Environment` - nonprod/prod
-- `Project` - cloud-native-devops
-- `ManagedBy` - terraform
-- `Name` - Resource-specific identifier
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Expired AWS Credentials
+### Expired Credentials
 ```bash
-# Check credentials
+rm -rf ~/.aws/cli/cache/*
+export AWS_PROFILE=devops-role
 aws sts get-caller-identity
-
-# If expired, refresh credentials in ~/.aws/credentials
 ```
 
-### State Lock Issues
+### Subnet Conflicts
 ```bash
-# Force unlock (use carefully)
-terraform force-unlock <LOCK_ID>
+# Destroy and recreate
+terraform destroy -var-file=nonprod.tfvars
+terraform apply -var-file=nonprod.tfvars
 ```
 
-### Provider Version Issues
+### Provider Issues
 ```bash
-# Re-initialize
-rm -rf .terraform
+rm -rf .terraform/
 terraform init
 ```
 
 ---
 
-## 📖 Variables Reference
+## 🗑️ Cleanup
 
-| Variable | Type | Description | Example |
-|----------|------|-------------|---------|
-| `name_prefix` | string | Prefix for resource names | `devops-nonprod` |
-| `vpc_cidr` | string | VPC CIDR block | `10.0.0.0/16` |
-| `azs` | list(string) | Availability zones | `["us-east-1a", "us-east-1b"]` |
-| `public_subnet_cidrs` | list(string) | Public subnet CIDRs | `["10.0.1.0/24", "10.0.2.0/24"]` |
-| `private_subnet_cidrs` | list(string) | Private subnet CIDRs | `["10.0.11.0/24", "10.0.12.0/24"]` |
-| `tags` | map(string) | Common resource tags | `{ Environment = "nonprod" }` |
+```bash
+# Preview deletion
+terraform plan -destroy -var-file=nonprod.tfvars
+
+# Destroy
+terraform destroy -var-file=nonprod.tfvars
+```
 
 ---
 
-## ✅ Current Status
+## ✅ Status
 
-- [x] Terraform configuration structure
-- [x] VPC module with networking components
-- [x] S3 backend with state locking
-- [x] Environment separation (nonprod/prod)
-- [ ] EKS cluster module
-- [ ] IAM roles and policies
-- [ ] Security groups
+- [x] VPC with networking
+- [x] IAM roles for EKS
+- [x] EKS cluster (1.35)
+- [x] Managed node groups
+- [x] EKS addons (CNI, DNS, proxy, storage)
+- [x] Remote state in S3
+- [x] Multi-environment support
 
 ---
 
 ## 🔜 Next Steps
 
-1. Add EKS cluster module
-2. Configure IAM roles for EKS
-3. Set up security groups
-4. Implement prod environment
-5. Add terraform.tfvars.example for documentation
+**Stage 2: Kubernetes Foundation**
+- Install NGINX Ingress Controller
+- Deploy cert-manager for TLS
+- Setup metrics-server
+
+**Stage 3: Platform Services**
+- Deploy Nexus repository
+- Setup SonarQube
+- Configure persistent storage
 
 ---
 
-**Last Updated:** January 29, 2026
+**Last Updated:** January 29, 2026  
+**Terraform:** >= 1.6.0 | **Kubernetes:** 1.35
