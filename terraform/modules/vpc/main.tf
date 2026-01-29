@@ -19,6 +19,10 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-public-${var.azs[count.index]}" })
+
+    lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_subnet" "private" {
@@ -28,6 +32,10 @@ resource "aws_subnet" "private" {
   availability_zone = var.azs[count.index]
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-private-${var.azs[count.index]}" })
+
+    lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_route_table" "public" {
