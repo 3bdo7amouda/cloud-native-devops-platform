@@ -1,4 +1,4 @@
-region = "eu-east-1"
+region = "us-east-1"
 
 name_prefix = "prod"
 
