@@ -22,6 +22,11 @@ variables:
 steps:
   - checkout: self
 
+  - task: TerraformInstaller@1
+    displayName: Install Terraform
+    inputs:
+      terraformVersion: latest
+
   - task: AWSShellScript@1
     displayName: AWS identity
     inputs:
