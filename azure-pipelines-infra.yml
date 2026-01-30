@@ -132,33 +132,22 @@ steps:
         set -euo pipefail
         cd $(TF_DIR)
 
-        AZS='${{ join(parameters.azs, "\",\"") }}'
-        PUBS='${{ join(parameters.public_subnet_cidrs, "\",\"") }}'
-        PRIVS='${{ join(parameters.private_subnet_cidrs, "\",\"") }}'
-        INST='${{ join(parameters.instance_types, "\",\"") }}'
-
-        COMMON_VARS=(
-          -var="region=${{ parameters.region }}"
-          -var="name_prefix=${{ parameters.name_prefix }}"
-          -var="vpc_cidr=${{ parameters.vpc_cidr }}"
-          -var="azs=[\"${AZS}\"]"
-          -var="public_subnet_cidrs=[\"${PUBS}\"]"
-          -var="private_subnet_cidrs=[\"${PRIVS}\"]"
-          -var="tags={env=\"${{ parameters.environment }}\",project=\"cloud-native-devops-platform\"}"
-          -var="cluster_name=${{ parameters.cluster_name }}"
-          -var="cluster_version=${{ parameters.cluster_version }}"
-          -var="node_desired=${{ parameters.node_desired }}"
-          -var="node_min=${{ parameters.node_min }}"
-          -var="node_max=${{ parameters.node_max }}"
-          -var="instance_types=[\"${INST}\"]"
-          -var="capacity_type=${{ parameters.capacity_type }}"
-        )
-
-        if [ "${{ parameters.destroy }}" = "true" ]; then
-          terraform plan -out=tfplan -destroy "${COMMON_VARS[@]}"
-        else
-          terraform plan -out=tfplan "${COMMON_VARS[@]}"
-        fi
+        terraform plan -out=tfplan \
+          $([ "${{ parameters.destroy }}" = "true" ] && echo "-destroy") \
+          -var='region=${{ parameters.region }}' \
+          -var='name_prefix=${{ parameters.name_prefix }}' \
+          -var='vpc_cidr=${{ parameters.vpc_cidr }}' \
+          -var='azs=${{ toJson(parameters.azs) }}' \
+          -var='public_subnet_cidrs=${{ toJson(parameters.public_subnet_cidrs) }}' \
+          -var='private_subnet_cidrs=${{ toJson(parameters.private_subnet_cidrs) }}' \
+          -var='tags=${{ toJson({ "env": parameters.environment, "project": "cloud-native-devops-platform" }) }}' \
+          -var='cluster_name=${{ parameters.cluster_name }}' \
+          -var='cluster_version=${{ parameters.cluster_version }}' \
+          -var='node_desired=${{ parameters.node_desired }}' \
+          -var='node_min=${{ parameters.node_min }}' \
+          -var='node_max=${{ parameters.node_max }}' \
+          -var='instance_types=${{ toJson(parameters.instance_types) }}' \
+          -var='capacity_type=${{ parameters.capacity_type }}'
 
   # 4) Terraform apply (executes the plan)
   - task: AWSShellScript@1
