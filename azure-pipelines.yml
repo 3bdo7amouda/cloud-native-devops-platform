@@ -1,0 +1,105 @@
+# Azure DevOps pipeline for voting-app: build images from voting-app/ and deploy via Helm (helm/)
+# Required pipeline variables (set in Pipelines > Edit > Variables):
+#   containerRegistryConnection - Docker registry service connection (e.g. ACR)
+#   containerRegistry           - Registry host for Helm (e.g. myacr.azurecr.io)
+#   kubectlConnection           - Kubernetes service connection for the cluster
+#   kubernetesNamespace         - Target namespace (e.g. default)
+#   helmValuesFile              - Values file name (e.g. values-nonprod.yaml or values-prod.yaml)
+#   environmentName             - Environment for deployment (optional)
+trigger:
+  branches:
+    include:
+      - main
+      - master
+  paths:
+    include:
+      - voting-app/*
+      - helm/*
+      - azure-pipelines.yml
+
+variables:
+  imageTag: $(Build.BuildId)
+
+stages:
+  - stage: Build
+    displayName: Build and push images
+    jobs:
+      - job: BuildVotingApp
+        displayName: Build vote, result, worker images
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - task: Docker@2
+            displayName: Build vote image
+            inputs:
+              command: buildAndPush
+              repository: voting-app-vote
+              Dockerfile: voting-app/vote/Dockerfile
+              buildContext: voting-app/vote
+              containerRegistry: $(containerRegistryConnection)
+              tags: |
+                $(imageTag)
+                latest
+
+          - task: Docker@2
+            displayName: Build result image
+            inputs:
+              command: buildAndPush
+              repository: voting-app-result
+              Dockerfile: voting-app/result/Dockerfile
+              buildContext: voting-app/result
+              containerRegistry: $(containerRegistryConnection)
+              tags: |
+                $(imageTag)
+                latest
+
+          - task: Docker@2
+            displayName: Build worker image
+            inputs:
+              command: buildAndPush
+              repository: voting-app-worker
+              Dockerfile: voting-app/worker/Dockerfile
+              buildContext: voting-app/worker
+              containerRegistry: $(containerRegistryConnection)
+              tags: |
+                $(imageTag)
+                latest
+
+  - stage: Deploy
+    displayName: Deploy with Helm
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: DeployHelm
+        displayName: Helm upgrade voting-app
+        pool:
+          vmImage: ubuntu-latest
+        environment: $(environmentName)
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: HelmInstaller@1
+                  displayName: Install Helm
+                  inputs:
+                    helmVersionToInstall: latest
+
+                - task: HelmDeploy@0
+                  displayName: Deploy voting-app chart
+                  inputs:
+                    connectionType: Kubernetes Service Connection
+                    kubernetesServiceConnection: $(kubectlConnection)
+                    namespace: $(kubernetesNamespace)
+                    command: upgrade
+                    chartType: FilePath
+                    chartPath: helm
+                    releaseName: voting-app
+                    valueFile: helm/$(helmValuesFile)
+                    overrideValues: |
+                      image.vote.repository=$(containerRegistry)/voting-app-vote
+                      image.vote.tag=$(imageTag)
+                      image.worker.repository=$(containerRegistry)/voting-app-worker
+                      image.worker.tag=$(imageTag)
+                      image.result.repository=$(containerRegistry)/voting-app-result
+                      image.result.tag=$(imageTag)
+                    install: true

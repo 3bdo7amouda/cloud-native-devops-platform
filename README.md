@@ -20,7 +20,8 @@ End-to-end cloud-native platform demonstrating Infrastructure as Code, Kubernete
 - IAM roles and essential addons
 - Multi-environment (nonprod/prod)
 
-📚 **[Infrastructure Documentation](terraform/README.md)**
+📚 **[Infrastructure Documentation](terraform/README.md)**  
+📦 **[Voting App Helm Chart](helm/README.md)** — Deploy from repo root: `helm upgrade --install voting-app ./helm --values ./helm/values-nonprod.yaml`
 
 ---
 
@@ -78,8 +79,10 @@ cloud-native-devops-platform/
 │   ├── modules/        # VPC, IAM, EKS modules
 │   ├── nonprod.tfvars  # Dev environment
 │   └── prod.tfvars     # Prod environment
+├── helm/               # Voting app Helm chart (chart path for pipeline)
+├── voting-app/         # Vote, result, worker microservices (Docker build context)
+├── azure-pipelines.yml # Azure DevOps build + Helm deploy pipeline
 ├── kubernetes/         # K8s manifests (upcoming)
-├── helm-charts/        # Custom charts (upcoming)
 └── pipelines/          # CI/CD configs (upcoming)
 ```
 

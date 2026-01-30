@@ -5,17 +5,19 @@ replicaCount:
   result: 2
   redis: 1
 
+# Image registry: use ACR for Azure (e.g. myacr.azurecr.io) or ECR for AWS
+# Pipeline can override via: --set image.vote.repository=..., image.vote.tag=...
 image:
   vote:
-    repository: <YOUR_ECR_REPO>/voting-app-vote
+    repository: <YOUR_REGISTRY>/voting-app-vote
     tag: "latest"
     pullPolicy: Always
   worker:
-    repository: <YOUR_ECR_REPO>/voting-app-worker
+    repository: <YOUR_REGISTRY>/voting-app-worker
     tag: "latest"
     pullPolicy: Always
   result:
-    repository: <YOUR_ECR_REPO>/voting-app-result
+    repository: <YOUR_REGISTRY>/voting-app-result
     tag: "latest"
     pullPolicy: Always
   redis:

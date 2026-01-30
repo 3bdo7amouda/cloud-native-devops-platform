@@ -34,32 +34,34 @@ kubectl create secret generic mongodb-atlas-credentials \
 
 ### 2. Update values.yaml
 
-Edit `values.yaml` or environment-specific values files to set your ECR repository:
+Edit `values.yaml` or environment-specific values files to set your container registry (ACR for Azure, ECR for AWS):
 
 ```yaml
 image:
   vote:
-    repository: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/voting-app-vote
+    repository: <YOUR_ACR>.azurecr.io/voting-app-vote   # or ECR: <account>.dkr.ecr.<region>.amazonaws.com/voting-app-vote
   worker:
-    repository: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/voting-app-worker
+    repository: <YOUR_ACR>.azurecr.io/voting-app-worker
   result:
-    repository: <AWS_ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/voting-app-result
+    repository: <YOUR_ACR>.azurecr.io/voting-app-result
 ```
 
 ### 3. Install the Chart
 
 **Non-Production:**
 ```bash
-helm upgrade --install voting-app ./voting-app-helm \
-  --values ./voting-app-helm/values-nonprod.yaml \
+# From repo root (cloud-native-devops-platform)
+helm upgrade --install voting-app ./helm \
+  --values ./helm/values-nonprod.yaml \
   --namespace default \
   --create-namespace
 ```
 
 **Production:**
 ```bash
-helm upgrade --install voting-app ./voting-app-helm \
-  --values ./voting-app-helm/values-prod.yaml \
+# From repo root (cloud-native-devops-platform)
+helm upgrade --install voting-app ./helm \
+  --values ./helm/values-prod.yaml \
   --namespace production \
   --create-namespace
 ```
@@ -117,11 +119,11 @@ Ensure your EKS cluster's NAT Gateway IP is whitelisted in MongoDB Atlas Network
 
 To test locally with Minikube:
 ```bash
-# Start minikube
+# From repo root
 minikube start
 
 # Install chart
-helm install voting-app ./voting-app-helm --values values-nonprod.yaml
+helm install voting-app ./helm --values ./helm/values-minikube.yaml
 
 # Access services
 minikube service voting-app-vote

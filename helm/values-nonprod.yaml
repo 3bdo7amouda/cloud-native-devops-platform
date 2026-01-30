@@ -7,13 +7,13 @@ replicaCount:
 
 image:
   vote:
-    repository: <YOUR_ECR_REPO>/voting-app-vote
+    repository: <YOUR_REGISTRY>/voting-app-vote
     tag: "nonprod"
   worker:
-    repository: <YOUR_ECR_REPO>/voting-app-worker
+    repository: <YOUR_REGISTRY>/voting-app-worker
     tag: "nonprod"
   result:
-    repository: <YOUR_ECR_REPO>/voting-app-result
+    repository: <YOUR_REGISTRY>/voting-app-result
     tag: "nonprod"
 
 mongodb:
