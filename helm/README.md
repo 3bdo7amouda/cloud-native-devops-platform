@@ -1,56 +1,80 @@
-# Voting App Helm Chart
+# Voting App — Helm Chart
 
-Kubernetes Helm chart for deploying the voting application with MongoDB Atlas on EKS.
+> **Deployment** for the [Voting App](voting-app/README.md) on Kubernetes (EKS or Minikube).  
+> Part of the [Cloud-Native DevOps Platform](../README.md).
 
-## Architecture
+This chart deploys **vote**, **result**, **worker**, and **redis**. Application source and build context live in **[voting-app/](../voting-app/README.md)**. Infrastructure is provisioned with **[terraform/](../terraform/README.md)**.
 
-- **Vote Service**: Python/Flask frontend for submitting votes
-- **Worker Service**: .NET Core background worker processing votes from Redis to MongoDB
-- **Result Service**: Node.js/Express backend displaying real-time results
-- **Redis**: In-memory queue for vote submissions
-- **MongoDB Atlas**: External managed database (third-party)
+---
+
+## 📖 Overview
+
+| Component | Description |
+|-----------|-------------|
+| **Vote** | Python/Flask frontend for submitting votes → talks to Redis |
+| **Result** | Node.js backend for real-time results → talks to MongoDB Atlas |
+| **Worker** | .NET background worker: Redis → MongoDB Atlas |
+| **Redis** | In-memory queue (in-cluster) |
+| **MongoDB Atlas** | External; connection via Kubernetes secret |
+
+---
+
+## When to use which values file
+
+| Use case | Values file | Notes |
+|----------|-------------|--------|
+| **Local testing (Minikube)** | `values-minikube.yaml` | NodePort, sample vote/result images; worker/result need your images or use as-is for UI only |
+| **Deployed (nonprod / EKS)** | `values-nonprod.yaml` | Set image registry (ACR/ECR); LoadBalancer |
+| **Deployed (production)** | `values-prod.yaml` | Higher replicas/resources; optional Ingress |
+
+All deployment paths (local or pipeline) use the **same chart** in **helm/**; only the values file and image registry differ.
+
+---
 
 ## Prerequisites
 
-1. **Kubernetes Cluster**: EKS cluster running
-2. **Helm 3.x**: Installed locally
-3. **MongoDB Atlas**: Account and cluster created
-4. **kubectl**: Configured to access your EKS cluster
-5. **AWS CLI**: Configured with proper credentials
-6. **Docker Images**: Built and pushed to ECR
+- **Kubernetes cluster** (EKS from [terraform](../terraform/README.md), or Minikube for local)
+- **Helm 3.x**
+- **kubectl** configured for the cluster
+- **MongoDB Atlas** connection string (for worker and result)
+- **Container images** (for deployed use): build from [voting-app/](../voting-app/README.md) and push to your registry (ACR/ECR)
+
+---
 
 ## Installation
 
-### 1. Create MongoDB Secret
+### 1. Create MongoDB secret
 
 ```bash
-# Replace with your actual MongoDB Atlas connection string
-MONGODB_URI="mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority"
+MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority"
 
 kubectl create secret generic mongodb-atlas-credentials \
   --from-literal=connection-string="$MONGODB_URI" \
   --namespace default
 ```
 
-### 2. Update values.yaml
+### 2. Set image registry (deployed use)
 
-Edit `values.yaml` or environment-specific values files to set your container registry (ACR for Azure, ECR for AWS):
+Edit **values.yaml** or the environment-specific file (`values-nonprod.yaml` / `values-prod.yaml`) and set your registry:
 
 ```yaml
 image:
   vote:
-    repository: <YOUR_ACR>.azurecr.io/voting-app-vote   # or ECR: <account>.dkr.ecr.<region>.amazonaws.com/voting-app-vote
+    repository: <YOUR_REGISTRY>/voting-app-vote   # e.g. myacr.azurecr.io/voting-app-vote
   worker:
-    repository: <YOUR_ACR>.azurecr.io/voting-app-worker
+    repository: <YOUR_REGISTRY>/voting-app-worker
   result:
-    repository: <YOUR_ACR>.azurecr.io/voting-app-result
+    repository: <YOUR_REGISTRY>/voting-app-result
 ```
 
-### 3. Install the Chart
+For **local Minikube**, `values-minikube.yaml` already uses sample vote/result images; you can leave or override as needed.
 
-**Non-Production:**
+### 3. Install or upgrade the chart
+
+**From repository root** (`cloud-native-devops-platform/`).
+
+**Non-production (EKS / deployed):**
 ```bash
-# From repo root (cloud-native-devops-platform)
 helm upgrade --install voting-app ./helm \
   --values ./helm/values-nonprod.yaml \
   --namespace default \
@@ -59,73 +83,79 @@ helm upgrade --install voting-app ./helm \
 
 **Production:**
 ```bash
-# From repo root (cloud-native-devops-platform)
 helm upgrade --install voting-app ./helm \
   --values ./helm/values-prod.yaml \
   --namespace production \
   --create-namespace
 ```
 
+**Local (Minikube):**
+```bash
+minikube start
+helm upgrade --install voting-app ./helm --values ./helm/values-minikube.yaml
+minikube service voting-app-vote
+minikube service voting-app-result
+```
+
+---
+
 ## Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `replicaCount.vote` | Number of vote pods | `2` |
-| `replicaCount.worker` | Number of worker pods | `2` |
-| `replicaCount.result` | Number of result pods | `2` |
-| `mongodb.secretName` | K8s secret containing MongoDB URI | `mongodb-atlas-credentials` |
-| `mongodb.databaseName` | MongoDB database name | `voting` |
-| `service.vote.type` | Vote service type | `LoadBalancer` |
+| `replicaCount.vote` | Vote pod replicas | `2` |
+| `replicaCount.worker` | Worker pod replicas | `2` |
+| `replicaCount.result` | Result pod replicas | `2` |
+| `mongodb.secretName` | Secret with MongoDB URI | `mongodb-atlas-credentials` |
+| `mongodb.secretKey` | Key in secret | `connection-string` |
+| `service.vote.type` | Vote service type | `LoadBalancer` (nonprod/prod) |
 | `service.result.type` | Result service type | `LoadBalancer` |
-| `ingress.enabled` | Enable ingress | `false` |
+| `ingress.enabled` | Enable Ingress | `false` (true in values-prod if desired) |
 
-## Verifying Installation
+---
+
+## Verifying installation
 
 ```bash
-# Check pods
 kubectl get pods -l app.kubernetes.io/name=voting-app
-
-# Check services
 kubectl get svc -l app.kubernetes.io/name=voting-app
 
-# Get LoadBalancer URLs
+# LoadBalancer hosts (EKS)
 kubectl get svc voting-app-vote -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 kubectl get svc voting-app-result -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 
-# Check logs
 kubectl logs -l app.kubernetes.io/component=worker --tail=50
 kubectl logs -l app.kubernetes.io/component=result --tail=50
 ```
 
-## Uninstalling
+---
+
+## Uninstall
 
 ```bash
 helm uninstall voting-app --namespace default
 ```
 
+---
+
 ## Troubleshooting
 
-### Worker can't connect to MongoDB
-```bash
-kubectl logs -l app.kubernetes.io/component=worker
-# Check if MONGODB_URI secret is correct
-kubectl get secret mongodb-atlas-credentials -o jsonpath='{.data.connection-string}' | base64 -d
-```
+**Worker can’t connect to MongoDB**  
+- Check secret: `kubectl get secret mongodb-atlas-credentials -o jsonpath='{.data.connection-string}' | base64 -d`  
+- Ensure MongoDB Atlas network access allows your EKS NAT / egress IPs.
 
-### MongoDB Atlas Network Access
-Ensure your EKS cluster's NAT Gateway IP is whitelisted in MongoDB Atlas Network Access settings.
+**Wrong or missing images**  
+- For deployed use, set `image.*.repository` and `image.*.tag` in the chosen values file (or override with `--set`).  
+- Images are built from [voting-app/vote](../voting-app/vote), [voting-app/result](../voting-app/result), [voting-app/worker](../voting-app/worker).
 
-## Development
+---
 
-To test locally with Minikube:
-```bash
-# From repo root
-minikube start
+## 📚 Documentation
 
-# Install chart
-helm install voting-app ./helm --values ./helm/values-minikube.yaml
+- [Main README](../README.md) — Platform guide and structure
+- [Voting App source](../voting-app/README.md) — vote, result, worker build context
+- [Terraform](../terraform/README.md) — EKS provisioning
 
-# Access services
-minikube service voting-app-vote
-minikube service voting-app-result
-```
+---
+
+_Helm chart for Voting App — local (Minikube) and deployed (EKS)._

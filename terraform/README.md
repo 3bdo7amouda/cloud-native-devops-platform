@@ -1,8 +1,8 @@
-# Infrastructure Provisioning - Terraform
+# Infrastructure — Terraform
 
-> **Stage 1** of Cloud-Native DevOps Platform
+> **Stage 1** of the [Cloud-Native DevOps Platform](../README.md).
 
-Terraform configuration for AWS infrastructure: VPC, EKS cluster, IAM roles, and Kubernetes addons.
+Terraform configuration for AWS: VPC, EKS cluster, IAM roles, and Kubernetes addons. After provisioning, deploy the [Voting App with Helm](../helm/README.md); application source is in [voting-app/](../voting-app/README.md).
 
 ---
 
@@ -36,8 +36,8 @@ terraform/
 ├── outputs.tf              # Exposed outputs
 ├── providers.tf            # AWS provider config
 ├── backend.tf              # S3 remote state
-├── nonprod.tfvars          # Non-prod environment
 ├── prod.tfvars             # Prod environment
+├── (nonprod via variables / tfvars)
 └── modules/
     ├── vpc/                # Networking resources
     ├── iam/                # IAM roles & policies
@@ -117,17 +117,20 @@ aws s3api put-bucket-encryption --bucket $BUCKET \
 
 ### 3. Deploy Infrastructure
 
+From repository root, navigate to **terraform/**:
+
 ```bash
-cd ~/cloud-native-devops-platform/terraform
+cd cloud-native-devops-platform/terraform
 
 # Initialize
 terraform init
 
 # Preview changes
-terraform plan -var-file=nonprod.tfvars
+terraform plan -var-file=prod.tfvars
+# or use your nonprod tfvars
 
 # Deploy
-terraform apply -var-file=nonprod.tfvars
+terraform apply -var-file=prod.tfvars
 ```
 
 ---
@@ -135,7 +138,7 @@ terraform apply -var-file=nonprod.tfvars
 ### 4. Access EKS Cluster
 
 ```bash
-# Configure kubectl
+# Configure kubectl (use cluster name from your tfvars/outputs)
 aws eks update-kubeconfig \
   --name nonprod-eks \
   --region us-east-1
@@ -145,15 +148,15 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
+Next: build images from [voting-app/](../voting-app/README.md) and deploy with [helm/](../helm/README.md).
+
 ---
 
 ## 📝 Configuration
 
+Use **prod.tfvars** (or your own tfvars) for environment-specific variables. See **variables.tf** for all options.
 
-## nonprod.tfvars (Development)
-
-## prod.tfvars (Production)
-
+---
 
 ## 📊 Outputs
 
@@ -184,14 +187,9 @@ terraform output -raw cluster_name
 
 **Common operations:**
 ```bash
-# List resources
 terraform state list
-
-# Refresh state
-terraform refresh -var-file=nonprod.tfvars
-
-# Force unlock (if crashed)
-terraform force-unlock <LOCK_ID>
+terraform refresh -var-file=prod.tfvars
+terraform force-unlock <LOCK_ID>   # if state lock stuck
 ```
 
 ---
@@ -205,14 +203,13 @@ export AWS_PROFILE=devops-role
 aws sts get-caller-identity
 ```
 
-### Subnet Conflicts
+### Subnet / resource conflicts
 ```bash
-# Destroy and recreate
-terraform destroy -var-file=nonprod.tfvars
-terraform apply -var-file=nonprod.tfvars
+terraform destroy -var-file=prod.tfvars
+terraform apply -var-file=prod.tfvars
 ```
 
-### Provider Issues
+### Provider issues
 ```bash
 rm -rf .terraform/
 terraform init
@@ -223,11 +220,8 @@ terraform init
 ## 🗑️ Cleanup
 
 ```bash
-# Preview deletion
-terraform plan -destroy -var-file=nonprod.tfvars
-
-# Destroy
-terraform destroy -var-file=nonprod.tfvars
+terraform plan -destroy -var-file=prod.tfvars
+terraform destroy -var-file=prod.tfvars
 ```
 
 ---
@@ -246,17 +240,18 @@ terraform destroy -var-file=nonprod.tfvars
 
 ## 🔜 Next Steps
 
-**Stage 2: Kubernetes Foundation**
-- Install NGINX Ingress Controller
-- Deploy cert-manager for TLS
-- Setup metrics-server
-
-**Stage 3: Platform Services**
-- Deploy Nexus repository
-- Setup SonarQube
-- Configure persistent storage
+- **Stage 2:** NGINX Ingress, cert-manager, metrics-server
+- **Stage 3:** Nexus, SonarQube, persistent storage
+- **Deploy app:** [Helm chart](../helm/README.md) and [Voting App source](../voting-app/README.md)
 
 ---
 
-**Last Updated:** January 29, 2026  
-**Terraform:** >= 1.6.0 | **Kubernetes:** 1.35
+## 📚 Documentation
+
+- [Main README](../README.md) — Platform guide and structure
+- [Helm chart](../helm/README.md) — Deploy Voting App on EKS
+- [Voting App source](../voting-app/README.md) — vote, result, worker build context
+
+---
+
+**Last Updated:** January 29, 2026 | **Terraform:** >= 1.6.0 | **Kubernetes:** 1.35
