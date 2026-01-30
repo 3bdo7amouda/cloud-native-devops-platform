@@ -15,9 +15,13 @@ parameters:
 
 variables:
   TF_DIR: terraform
-  AWS_SERVICE_CONNECTION: hamouda
+  TF_VAR_FILE: 'terraform/${{ parameters.env }}.tfvars'
   TF_STATE_BUCKET: cloud-native-devops-platform-terraform-bucket
   TF_STATE_KEY: 'state/${{ parameters.env }}.tfstate'
+  AWS_SERVICE_CONNECTION: hamouda
+
+pool:
+  vmImage: ubuntu-latest
 
 steps:
   - checkout: self
@@ -25,16 +29,7 @@ steps:
   - task: TerraformInstaller@1
     displayName: Install Terraform
     inputs:
-      terraformVersion: 'latest'
-
-  - task: AWSShellScript@1
-    displayName: AWS identity
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: us-east-1
-      scriptType: inline
-      inlineScript: |
-        aws sts get-caller-identity
+      terraformVersion: latest
 
   - task: AWSShellScript@1
     displayName: Terraform init
@@ -44,7 +39,7 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform init \
           -backend-config="bucket=$(TF_STATE_BUCKET)" \
           -backend-config="key=$(TF_STATE_KEY)" \
@@ -59,42 +54,12 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
 
-        if [ "${{ parameters.env }}" = "nonprod" ]; then
-          terraform plan -out=tfplan \
-            $([ "${{ parameters.destroy }}" = "true" ] && echo "-destroy") \
-            -var='region=us-east-1' \
-            -var='name_prefix=nonprod' \
-            -var='vpc_cidr=10.10.0.0/16' \
-            -var='azs=["us-east-1a","us-east-1b"]' \
-            -var='public_subnet_cidrs=["10.10.1.0/24","10.10.2.0/24"]' \
-            -var='private_subnet_cidrs=["10.10.11.0/24","10.10.12.0/24"]' \
-            -var='tags={env="nonprod",project="cloud-native-devops-platform"}' \
-            -var='cluster_name=nonprod-eks' \
-            -var='cluster_version="1.33"' \
-            -var='node_desired=1' \
-            -var='node_min=1' \
-            -var='node_max=2' \
-            -var='instance_types=["t3.medium"]' \
-            -var='capacity_type=ON_DEMAND'
+        if [ "${{ parameters.destroy }}" = "true" ]; then
+          terraform plan -destroy -out=tfplan -var-file="../$(TF_VAR_FILE)"
         else
-          terraform plan -out=tfplan \
-            $([ "${{ parameters.destroy }}" = "true" ] && echo "-destroy") \
-            -var='region=us-east-1' \
-            -var='name_prefix=prod' \
-            -var='vpc_cidr=10.20.0.0/16' \
-            -var='azs=["us-east-1a","us-east-1b"]' \
-            -var='public_subnet_cidrs=["10.20.1.0/24","10.20.2.0/24"]' \
-            -var='private_subnet_cidrs=["10.20.11.0/24","10.20.12.0/24"]' \
-            -var='tags={env="prod",project="cloud-native-devops-platform"}' \
-            -var='cluster_name=prod-eks' \
-            -var='cluster_version="1.33"' \
-            -var='node_desired=2' \
-            -var='node_min=2' \
-            -var='node_max=4' \
-            -var='instance_types=["t3.large"]' \
-            -var='capacity_type=ON_DEMAND'
+          terraform plan -out=tfplan -var-file="../$(TF_VAR_FILE)"
         fi
 
   - task: AWSShellScript@1
@@ -105,5 +70,5 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform apply -auto-approve tfplan
