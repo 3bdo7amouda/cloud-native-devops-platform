@@ -2,40 +2,88 @@ trigger: none
 pr: none
 
 parameters:
+  # environment selector (used only for state key separation + tagging)
   - name: environment
     displayName: Environment
     type: string
     default: nonprod
-    values:
-      - nonprod
-      - prod
+    values: [nonprod, prod]
 
-  - name: action
-    displayName: Action
-    type: string
-    default: apply
-    values:
-      - apply
-      - destroy
+  # destroy flag (false by default)
+  - name: destroy
+    displayName: Destroy infrastructure
+    type: boolean
+    default: false
 
-  - name: state_bucket
-    displayName: Terraform state S3 bucket
+  # === Terraform variables (defaults set to your NONPROD values) ===
+  - name: region
     type: string
+    default: us-east-1
 
-  - name: lock_table
-    displayName: Terraform lock DynamoDB table
+  - name: name_prefix
     type: string
+    default: nonprod
 
-  - name: state_prefix
-    displayName: Terraform state key prefix
+  - name: vpc_cidr
     type: string
-    default: cloud-native-devops-platform
+    default: 10.10.0.0/16
+
+  - name: azs
+    type: object
+    default:
+      - us-east-1a
+      - us-east-1b
+
+  - name: public_subnet_cidrs
+    type: object
+    default:
+      - 10.10.1.0/24
+      - 10.10.2.0/24
+
+  - name: private_subnet_cidrs
+    type: object
+    default:
+      - 10.10.11.0/24
+      - 10.10.12.0/24
+
+  - name: cluster_name
+    type: string
+    default: nonprod-eks
+
+  - name: cluster_version
+    type: string
+    default: "1.35"
+
+  - name: node_desired
+    type: number
+    default: 1
+
+  - name: node_min
+    type: number
+    default: 1
+
+  - name: node_max
+    type: number
+    default: 2
+
+  - name: instance_types
+    type: object
+    default:
+      - t3.medium
+
+  - name: capacity_type
+    type: string
+    default: ON_DEMAND
 
 variables:
   TF_DIR: terraform
-  TF_VAR_FILE: '$(TF_DIR)/${{ parameters.environment }}.tfvars'
-  TF_STATE_KEY: '${{ parameters.state_prefix }}/${{ parameters.environment }}.tfstate'
   AWS_SERVICE_CONNECTION: hamouda
+
+  # S3 backend bucket
+  TF_STATE_BUCKET: cloud-native-devops-platform-terraform-bucket
+
+  # state key per environment
+  TF_STATE_KEY: 'state/${{ parameters.environment }}.tfstate'
 
 pool:
   vmImage: ubuntu-latest
@@ -43,79 +91,81 @@ pool:
 steps:
   - checkout: self
 
-  # 1️⃣ Extract AWS region from tfvars
-  - bash: |
-      set -euo pipefail
-
-      if [ ! -f "$(TF_VAR_FILE)" ]; then
-        echo "❌ Missing var file: $(TF_VAR_FILE)"
-        exit 1
-      fi
-
-      REGION=$(grep -E '^\s*region\s*=' "$(TF_VAR_FILE)" | sed -E 's/.*"([^"]+)".*/\1/')
-      if [ -z "$REGION" ]; then
-        echo "❌ Could not extract region"
-        exit 1
-      fi
-
-      echo "Using AWS region: $REGION"
-      echo "##vso[task.setvariable variable=AWS_REGION]$REGION"
-    displayName: Extract AWS region
-
-  # 2️⃣ Verify AWS credentials (from service connection)
+  # 1) Verify AWS identity from service connection
   - task: AWSShellScript@1
     displayName: Verify AWS service connection
     inputs:
       awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
+      regionName: ${{ parameters.region }}
       scriptType: inline
       inlineScript: |
         aws sts get-caller-identity
 
-  # 3️⃣ Terraform init + validate
+  # 2) Terraform init (S3 backend only, no DynamoDB lock table)
   - task: AWSShellScript@1
-    displayName: Terraform init & validate
+    displayName: Terraform init + validate
     inputs:
       awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
+      regionName: ${{ parameters.region }}
       scriptType: inline
       inlineScript: |
         set -euo pipefail
         cd $(TF_DIR)
 
         terraform init \
-          -backend-config="bucket=${{ parameters.state_bucket }}" \
+          -backend-config="bucket=$(TF_STATE_BUCKET)" \
           -backend-config="key=$(TF_STATE_KEY)" \
-          -backend-config="region=$(AWS_REGION)" \
-          -backend-config="dynamodb_table=${{ parameters.lock_table }}" \
+          -backend-config="region=${{ parameters.region }}" \
           -backend-config="encrypt=true"
 
         terraform fmt -check
         terraform validate
 
-  # 4️⃣ Terraform plan (apply or destroy)
+  # 3) Terraform plan (apply or destroy based on boolean flag)
   - task: AWSShellScript@1
     displayName: Terraform plan
     inputs:
       awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
+      regionName: ${{ parameters.region }}
       scriptType: inline
       inlineScript: |
         set -euo pipefail
         cd $(TF_DIR)
 
-        if [ "${{ parameters.action }}" = "apply" ]; then
-          terraform plan -out=tfplan -var-file="$(TF_VAR_FILE)"
+        AZS='${{ join(parameters.azs, "\",\"") }}'
+        PUBS='${{ join(parameters.public_subnet_cidrs, "\",\"") }}'
+        PRIVS='${{ join(parameters.private_subnet_cidrs, "\",\"") }}'
+        INST='${{ join(parameters.instance_types, "\",\"") }}'
+
+        COMMON_VARS=(
+          -var="region=${{ parameters.region }}"
+          -var="name_prefix=${{ parameters.name_prefix }}"
+          -var="vpc_cidr=${{ parameters.vpc_cidr }}"
+          -var="azs=[\"${AZS}\"]"
+          -var="public_subnet_cidrs=[\"${PUBS}\"]"
+          -var="private_subnet_cidrs=[\"${PRIVS}\"]"
+          -var="tags={env=\"${{ parameters.environment }}\",project=\"cloud-native-devops-platform\"}"
+          -var="cluster_name=${{ parameters.cluster_name }}"
+          -var="cluster_version=${{ parameters.cluster_version }}"
+          -var="node_desired=${{ parameters.node_desired }}"
+          -var="node_min=${{ parameters.node_min }}"
+          -var="node_max=${{ parameters.node_max }}"
+          -var="instance_types=[\"${INST}\"]"
+          -var="capacity_type=${{ parameters.capacity_type }}"
+        )
+
+        if [ "${{ parameters.destroy }}" = "true" ]; then
+          terraform plan -out=tfplan -destroy "${COMMON_VARS[@]}"
         else
-          terraform plan -out=tfplan -destroy -var-file="$(TF_VAR_FILE)"
+          terraform plan -out=tfplan "${COMMON_VARS[@]}"
         fi
 
-  # 5️⃣ Terraform apply (executes the plan)
+  # 4) Terraform apply (executes the plan)
   - task: AWSShellScript@1
     displayName: Terraform apply
     inputs:
       awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
+      regionName: ${{ parameters.region }}
       scriptType: inline
       inlineScript: |
         set -euo pipefail
