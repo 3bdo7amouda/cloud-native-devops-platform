@@ -15,7 +15,7 @@ tags = {
 }
 
 cluster_name    = "prod-eks"
-cluster_version = "1.33"
+cluster_version = "1.30"
 
 node_desired   = 2
 node_min       = 2

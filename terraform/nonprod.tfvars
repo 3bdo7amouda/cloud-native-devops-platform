@@ -15,7 +15,7 @@ tags = {
 }
 
 cluster_name    = "nonprod-eks"
-cluster_version = "1.33"
+cluster_version = "1.30"
 
 node_desired   = 1
 node_min       = 1
