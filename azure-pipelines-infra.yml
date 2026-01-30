@@ -15,9 +15,7 @@ parameters:
 
 variables:
   TF_DIR: terraform
-  TF_VAR_FILE: 'terraform/${{ parameters.env }}.tfvars'
-  TF_STATE_BUCKET: cloud-native-devops-platform-terraform-bucket
-  TF_STATE_KEY: 'state/${{ parameters.env }}.tfstate'
+  TF_VAR_FILE: '${{ parameters.env }}.tfvars'
   AWS_SERVICE_CONNECTION: hamouda
 
 pool:
@@ -40,11 +38,7 @@ steps:
       inlineScript: |
         set -euo pipefail
         cd "$(TF_DIR)"
-        terraform init \
-          -backend-config="bucket=$(TF_STATE_BUCKET)" \
-          -backend-config="key=$(TF_STATE_KEY)" \
-          -backend-config="region=us-east-1" \
-          -backend-config="encrypt=true"
+        terraform init
 
   - task: AWSShellScript@1
     displayName: Terraform plan
@@ -56,9 +50,9 @@ steps:
         set -euo pipefail
         cd "$(TF_DIR)"
         if [ "${{ parameters.destroy }}" = "True" ]; then
-          terraform plan -destroy -out=tfplan -var-file="../$(TF_VAR_FILE)"
+          terraform plan -destroy -out=tfplan -var-file="$(TF_VAR_FILE)"
         else
-          terraform plan -out=tfplan -var-file="../$(TF_VAR_FILE)"
+          terraform plan -out=tfplan -var-file="$(TF_VAR_FILE)"
         fi
 
   - task: AWSShellScript@1
