@@ -55,8 +55,7 @@ steps:
       inlineScript: |
         set -euo pipefail
         cd "$(TF_DIR)"
-
-        if [ "${{ parameters.destroy }}" = "true" ]; then
+        if [ "${{ parameters.destroy }}" = "True" ]; then
           terraform plan -destroy -out=tfplan -var-file="../$(TF_VAR_FILE)"
         else
           terraform plan -out=tfplan -var-file="../$(TF_VAR_FILE)"
