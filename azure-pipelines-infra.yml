@@ -72,7 +72,7 @@ steps:
             -var='private_subnet_cidrs=["10.10.11.0/24","10.10.12.0/24"]' \
             -var='tags={env="nonprod",project="cloud-native-devops-platform"}' \
             -var='cluster_name=nonprod-eks' \
-            -var='cluster_version="1.35"' \
+            -var='cluster_version="1.33"' \
             -var='node_desired=1' \
             -var='node_min=1' \
             -var='node_max=2' \
@@ -89,7 +89,7 @@ steps:
             -var='private_subnet_cidrs=["10.20.11.0/24","10.20.12.0/24"]' \
             -var='tags={env="prod",project="cloud-native-devops-platform"}' \
             -var='cluster_name=prod-eks' \
-            -var='cluster_version="1.35"' \
+            -var='cluster_version="1.33"' \
             -var='node_desired=2' \
             -var='node_min=2' \
             -var='node_max=4' \
