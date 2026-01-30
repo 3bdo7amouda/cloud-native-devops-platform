@@ -1,0 +1,99 @@
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+    default: nonprod
+    values: [nonprod, prod]
+
+  - name: action
+    displayName: Action
+    type: string
+    default: apply
+    values: [apply, destroy]
+
+  - name: state_bucket
+    displayName: Terraform state S3 bucket
+    type: string
+
+  - name: lock_table
+    displayName: Terraform lock DynamoDB table
+    type: string
+
+  - name: state_prefix
+    displayName: Terraform state key prefix
+    type: string
+    default: cloud-native-devops-platform
+
+variables:
+  TF_DIR: terraform
+  TF_VAR_FILE: '$(TF_DIR)/${{ parameters.environment }}.tfvars'
+  TF_STATE_KEY: '${{ parameters.state_prefix }}/${{ parameters.environment }}.tfstate'
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - bash: |
+      set -euo pipefail
+      if [ ! -f "$(TF_VAR_FILE)" ]; then
+        echo "Missing var file: $(TF_VAR_FILE)"
+        exit 1
+      fi
+
+      REGION=$(grep -E '^\s*region\s*=' "$(TF_VAR_FILE)" | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+      if [ -z "${REGION}" ]; then
+        echo "Could not extract region from $(TF_VAR_FILE)"
+        exit 1
+      fi
+
+      echo "##vso[task.setvariable variable=AWS_REGION]${REGION}"
+    displayName: Extract region from tfvars
+
+  - bash: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+
+      terraform init \
+        -backend-config="bucket=${{ parameters.state_bucket }}" \
+        -backend-config="key=$(TF_STATE_KEY)" \
+        -backend-config="region=$(AWS_REGION)" \
+        -backend-config="dynamodb_table=${{ parameters.lock_table }}" \
+        -backend-config="encrypt=true"
+
+      terraform fmt -check
+      terraform validate
+    displayName: Terraform init + validate
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_REGION: $(AWS_REGION)
+
+  - bash: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+
+      if [ "${{ parameters.action }}" = "apply" ]; then
+        terraform plan -out=tfplan -var-file="$(TF_VAR_FILE)"
+      else
+        terraform plan -out=tfplan -destroy -var-file="$(TF_VAR_FILE)"
+      fi
+    displayName: Terraform plan
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_REGION: $(AWS_REGION)
+
+  - bash: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+      terraform apply -auto-approve tfplan
+    displayName: Terraform apply (plan result)
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_REGION: $(AWS_REGION)
