@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "voting-app.fullname" . }}-worker
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+      - name: worker
+        image: "{{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}"
+        imagePullPolicy: {{ .Values.image.worker.pullPolicy }}
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.mongodb.secretName }}
+              key: {{ .Values.mongodb.secretKey }}
+        - name: REDIS_HOST
+          value: "{{ include "voting-app.fullname" . }}-redis"
+        resources:
+          {{- toYaml .Values.resources.worker | nindent 10 }}

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "voting-app.fullname" . }}-result
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: result
+spec:
+  replicas: {{ .Values.replicaCount.result }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: result
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: result
+    spec:
+      containers:
+      - name: result
+        image: "{{ .Values.image.result.repository }}:{{ .Values.image.result.tag }}"
+        imagePullPolicy: {{ .Values.image.result.pullPolicy }}
+        ports:
+        - containerPort: 80
+          name: http
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.mongodb.secretName }}
+              key: {{ .Values.mongodb.secretKey }}
+        - name: PORT
+          value: "80"
+        resources:
+          {{- toYaml .Values.resources.result | nindent 10 }}

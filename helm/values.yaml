@@ -1,0 +1,103 @@
+# Default values for voting-app
+replicaCount:
+  vote: 2
+  worker: 2
+  result: 2
+  redis: 1
+
+image:
+  vote:
+    repository: <YOUR_ECR_REPO>/voting-app-vote
+    tag: "latest"
+    pullPolicy: Always
+  worker:
+    repository: <YOUR_ECR_REPO>/voting-app-worker
+    tag: "latest"
+    pullPolicy: Always
+  result:
+    repository: <YOUR_ECR_REPO>/voting-app-result
+    tag: "latest"
+    pullPolicy: Always
+  redis:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+
+# MongoDB Atlas Configuration
+mongodb:
+  # Secret name containing MongoDB connection string
+  secretName: mongodb-atlas-credentials
+  # Key in the secret
+  secretKey: connection-string
+  databaseName: voting
+
+service:
+  vote:
+    type: LoadBalancer
+    port: 80
+    targetPort: 80
+  result:
+    type: LoadBalancer
+    port: 80
+    targetPort: 80
+  redis:
+    type: ClusterIP
+    port: 6379
+
+resources:
+  vote:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  worker:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "400m"
+  result:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  redis:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: vote.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: vote
+    - host: result.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: result
+  tls:
+    - secretName: voting-app-tls
+      hosts:
+        - vote.example.com
+        - result.example.com
+
+# Node affinity and tolerations
+affinity: {}
+tolerations: []
+nodeSelector: {}

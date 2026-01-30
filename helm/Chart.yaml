@@ -1,0 +1,12 @@
+apiVersion: v2
+name: voting-app
+description: Microservices voting application with MongoDB Atlas
+type: application
+version: 1.0.0
+appVersion: "2.0"
+keywords:
+  - voting
+  - microservices
+  - mongodb
+maintainers:
+  - name: DevOps Team

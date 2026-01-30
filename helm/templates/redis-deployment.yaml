@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "voting-app.fullname" . }}-redis
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  replicas: {{ .Values.replicaCount.redis }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      containers:
+      - name: redis
+        image: "{{ .Values.image.redis.repository }}:{{ .Values.image.redis.tag }}"
+        imagePullPolicy: {{ .Values.image.redis.pullPolicy }}
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          {{- toYaml .Values.resources.redis | nindent 10 }}

@@ -1,0 +1,70 @@
+# Production Environment Overrides
+replicaCount:
+  vote: 3
+  worker: 3
+  result: 3
+  redis: 1
+
+image:
+  vote:
+    repository: <YOUR_ECR_REPO>/voting-app-vote
+    tag: "v1.0.0"
+  worker:
+    repository: <YOUR_ECR_REPO>/voting-app-worker
+    tag: "v1.0.0"
+  result:
+    repository: <YOUR_ECR_REPO>/voting-app-result
+    tag: "v1.0.0"
+
+mongodb:
+  secretName: mongodb-atlas-credentials-prod
+  secretKey: connection-string
+  databaseName: voting-prod
+
+service:
+  vote:
+    type: LoadBalancer
+  result:
+    type: LoadBalancer
+
+resources:
+  vote:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "400m"
+  worker:
+    requests:
+      memory: "512Mi"
+      cpu: "400m"
+    limits:
+      memory: "1Gi"
+      cpu: "800m"
+  result:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "400m"
+
+ingress:
+  enabled: true
+  hosts:
+    - host: vote.yourcompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: vote
+    - host: result.yourcompany.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: result
+  tls:
+    - secretName: voting-app-tls
+      hosts:
+        - vote.yourcompany.com
+        - result.yourcompany.com

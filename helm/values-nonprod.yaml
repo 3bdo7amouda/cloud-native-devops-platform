@@ -1,0 +1,54 @@
+# Non-Production Environment Overrides
+replicaCount:
+  vote: 1
+  worker: 1
+  result: 1
+  redis: 1
+
+image:
+  vote:
+    repository: <YOUR_ECR_REPO>/voting-app-vote
+    tag: "nonprod"
+  worker:
+    repository: <YOUR_ECR_REPO>/voting-app-worker
+    tag: "nonprod"
+  result:
+    repository: <YOUR_ECR_REPO>/voting-app-result
+    tag: "nonprod"
+
+mongodb:
+  secretName: mongodb-atlas-credentials-nonprod
+  secretKey: connection-string
+  databaseName: voting-nonprod
+
+service:
+  vote:
+    type: LoadBalancer
+  result:
+    type: LoadBalancer
+
+resources:
+  vote:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+  worker:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  result:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+ingress:
+  enabled: false
