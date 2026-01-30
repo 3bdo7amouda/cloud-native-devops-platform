@@ -17,51 +17,152 @@ variables:
   TF_DIR: terraform
   TF_VAR_FILE: '${{ parameters.env }}.tfvars'
   AWS_SERVICE_CONNECTION: hamouda
+  AWS_REGION: us-east-1
 
 pool:
   vmImage: ubuntu-latest
 
 steps:
-  - checkout: self
+- checkout: self
 
-  - task: TerraformInstaller@1
-    displayName: Install Terraform
-    inputs:
-      terraformVersion: latest
+- task: TerraformInstaller@1
+  displayName: Install Terraform
+  inputs:
+    terraformVersion: latest
 
-  - task: AWSShellScript@1
-    displayName: Terraform init
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: us-east-1
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform init
+- task: AWSShellScript@1
+  displayName: Terraform init
+  inputs:
+    awsCredentials: $(AWS_SERVICE_CONNECTION)
+    regionName: $(AWS_REGION)
+    scriptType: inline
+    inlineScript: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+      terraform init
 
-  - task: AWSShellScript@1
-    displayName: Terraform plan
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: us-east-1
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        if [ "${{ parameters.destroy }}" = "True" ]; then
-          terraform plan -destroy -out=tfplan -var-file="$(TF_VAR_FILE)"
-        else
-          terraform plan -out=tfplan -var-file="$(TF_VAR_FILE)"
-        fi
+- task: AWSShellScript@1
+  displayName: Terraform plan
+  inputs:
+    awsCredentials: $(AWS_SERVICE_CONNECTION)
+    regionName: $(AWS_REGION)
+    scriptType: inline
+    inlineScript: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+      if [ "${{ parameters.destroy }}" = "True" ]; then
+        terraform plan -destroy -out=tfplan -var-file="$(TF_VAR_FILE)"
+      else
+        terraform plan -out=tfplan -var-file="$(TF_VAR_FILE)"
+      fi
 
-  - task: AWSShellScript@1
-    displayName: Terraform apply
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: us-east-1
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform apply -auto-approve tfplan
+- task: AWSShellScript@1
+  displayName: Terraform apply
+  inputs:
+    awsCredentials: $(AWS_SERVICE_CONNECTION)
+    regionName: $(AWS_REGION)
+    scriptType: inline
+    inlineScript: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+      terraform apply -auto-approve tfplan
+
+- task: KubectlInstaller@0
+  displayName: Install kubectl
+  inputs:
+    kubectlVersion: 'latest'
+
+- task: HelmInstaller@1
+  displayName: Install Helm
+  inputs:
+    helmVersionToInstall: 'latest'
+
+- task: AWSShellScript@1
+  displayName: Configure kubeconfig
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    awsCredentials: $(AWS_SERVICE_CONNECTION)
+    regionName: $(AWS_REGION)
+    scriptType: inline
+    inlineScript: |
+      set -euo pipefail
+      cd "$(TF_DIR)"
+      CLUSTER_NAME="$(terraform output -raw cluster_name)"
+      aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)"
+      kubectl get nodes
+
+- task: Bash@3
+  displayName: Create namespaces
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    targetType: inline
+    script: |
+      set -euo pipefail
+      kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create namespace nexus --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
+      kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+- task: HelmDeploy@0
+  displayName: Install ingress-nginx
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    connectionType: None
+    command: upgrade
+    chartType: Name
+    chartName: ingress-nginx/ingress-nginx
+    releaseName: ingress-nginx
+    namespace: ingress-nginx
+    install: true
+    arguments: '--repo https://kubernetes.github.io/ingress-nginx --wait'
+
+- task: HelmDeploy@0
+  displayName: Install Nexus
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    connectionType: None
+    command: upgrade
+    chartType: Name
+    chartName: sonatype/nexus-repository-manager
+    releaseName: nexus
+    namespace: nexus
+    install: true
+    arguments: '--repo https://sonatype.github.io/helm3-charts/ --wait'
+
+- task: HelmDeploy@0
+  displayName: Install SonarQube
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    connectionType: None
+    command: upgrade
+    chartType: Name
+    chartName: sonarqube/sonarqube
+    releaseName: sonarqube
+    namespace: sonarqube
+    install: true
+    arguments: '--repo https://SonarSource.github.io/helm-chart-sonarqube --wait'
+
+- task: HelmDeploy@0
+  displayName: Install Argo CD
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    connectionType: None
+    command: upgrade
+    chartType: Name
+    chartName: argo/argo-cd
+    releaseName: argocd
+    namespace: argocd
+    install: true
+    arguments: '--repo https://argoproj.github.io/argo-helm --wait'
+
+- task: Bash@3
+  displayName: Verify platform services
+  condition: and(succeeded(), ne('${{ parameters.destroy }}','True'))
+  inputs:
+    targetType: inline
+    script: |
+      set -euo pipefail
+      kubectl get pods -n ingress-nginx
+      kubectl get pods -n nexus
+      kubectl get pods -n sonarqube
+      kubectl get pods -n argocd
