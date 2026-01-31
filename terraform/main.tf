@@ -51,10 +51,6 @@ module "irsa" {
   }
   tags = var.tags
 }
-
-# EBS CSI addon created in root to break IAM ↔ EKS cycle:
-# EKS needs cluster/node roles (from IAM) and optionally EBS CSI role (from IRSA).
-# IRSA needs OIDC URL from EKS. So: IAM → EKS → IRSA → this addon.
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name             = module.eks.cluster_name
   addon_name               = "aws-ebs-csi-driver"
