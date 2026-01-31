@@ -23,10 +23,14 @@ output "cluster_ca" {
   sensitive = true
 }
 
-output "cluster_security_group_id" {
-  value = module.eks.cluster_security_group_id
-}
-
 output "oidc_issuer_url" {
   value = module.eks.oidc_issuer_url
+}
+
+output "oidc_provider_arn" {
+  value = module.iam.oidc_provider_arn
+}
+
+output "irsa_role_arns" {
+  value = module.iam.irsa_role_arns
 }
