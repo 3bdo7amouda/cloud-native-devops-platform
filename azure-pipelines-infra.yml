@@ -41,18 +41,6 @@ steps:
         terraform init -input=false
 
   - task: AWSShellScript@1
-    displayName: Terraform plan
-    condition: eq('${{ parameters.destroy }}', false)
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd $(TF_DIR)
-        terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
-
-  - task: AWSShellScript@1
     displayName: Terraform plan -destroy
     condition: eq('${{ parameters.destroy }}', true)
     inputs:
