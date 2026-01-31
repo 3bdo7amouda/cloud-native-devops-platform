@@ -12,15 +12,15 @@ End-to-end cloud-native platform demonstrating Infrastructure as Code, Kubernete
 
 ---
 
-## 📂 Repository Structure (linked)
+## 📂 Repository Structure
 
 | Path | Purpose | Documentation |
 |------|---------|---------------|
-| **[terraform/](terraform/README.md)** | AWS infrastructure: VPC, EKS, IAM. Provision the cluster first. | [Terraform README](terraform/README.md) |
+| **[terraform/](terraform/README.md)** | AWS infrastructure: VPC, EKS, IAM, API Gateway, Cognito. Provision the cluster first. | [Terraform README](terraform/README.md) |
 | **[voting-app/](voting-app/README.md)** | Microservices source code: **vote**, **result**, **worker**. Build context for container images. | [Voting App README](voting-app/README.md) |
-| **[helm/](helm/README.md)** | Kubernetes Helm chart for the Voting App. Deploys vote, result, worker, and Redis. | [Helm README](helm/README.md) |
+| **[helm-charts/](helm-charts/README.md)** | Kubernetes Helm chart for the Voting App. Deploys vote, result, worker, and Redis. | [Helm README](helm-charts/README.md) |
 
-**Flow:** Provision cluster with **Terraform** → Build images from **voting-app/** → Deploy with **Helm** (chart in **helm/**).
+**Flow:** Provision cluster with **Terraform** → Build images from **voting-app/** → Deploy with **Helm** (chart in **helm-charts/**).
 
 ```
 cloud-native-devops-platform/
@@ -28,15 +28,16 @@ cloud-native-devops-platform/
 ├── terraform/                # Stage 1: Infrastructure
 │   ├── README.md             # Terraform guide
 │   ├── main.tf, variables.tf, outputs.tf, backend.tf, providers.tf
-│   ├── prod.tfvars / (nonprod via variables)
-│   └── modules/              # vpc, iam, eks
+│   ├── prod.tfvars
+│   └── modules/
+│       ├── networking/       # VPC, subnets, API Gateway, Cognito
+│       ├── iam/              # EKS cluster + node roles
+│       ├── eks/              # EKS cluster, node group, addons
+│       └── irsa/             # OIDC provider, IRSA (e.g. EBS CSI)
 ├── voting-app/               # Application source
-│   ├── README.md             # Voting App guide
-│   ├── vote/                 # Python/Flask — build context for vote image
-│   ├── result/               # Node.js — build context for result image
-│   └── worker/               # .NET — build context for worker image
-└── helm/                     # Deployment chart
-    ├── README.md             # Helm guide
+│   ├── vote/, result/, worker/
+│   └── README.md
+└── helm-charts/              # Deployment chart
     ├── Chart.yaml
     ├── values.yaml, values-minikube.yaml, values-nonprod.yaml, values-prod.yaml
     └── templates/            # vote, result, worker, redis, ingress
@@ -46,19 +47,27 @@ cloud-native-devops-platform/
 
 ## 🎯 Status
 
-### ✅ Stage 1: Infrastructure (COMPLETE)
-- Multi-tier VPC with public/private subnets
-- EKS cluster (Kubernetes 1.35) with managed nodes
-- IAM roles and essential addons
-- Multi-environment (nonprod/prod)
+### ✅ Infrastructure (Terraform)
+- **Networking:** VPC, public/private subnets, IGW, NAT Gateway, routes, EKS subnet tags
+- **EKS:** Cluster, managed node group, OIDC provider, cluster + node IAM roles
+- **API & Auth:** API Gateway HTTP API, default stage (`$default`), Cognito user pool + client, JWT authorizer
+- **IRSA:** OIDC provider (for future IRSA), EBS CSI driver addon with IRSA
 
 ### ✅ Application & Deployment
 - Voting App: vote, result, worker microservices in **voting-app/**
-- Helm chart in **helm/** for local (Minikube) and deployed (EKS) use
+- Helm chart in **helm-charts/** for local (Minikube) and deployed (EKS) use
+- Ingress: **ingress-nginx** (Service type LoadBalancer), HTTP only; TLS handled at API Gateway
 
-📚 **[Infrastructure →](terraform/README.md)**  
-📦 **[Voting App source →](voting-app/README.md)**  
-🚀 **[Helm deployment →](helm/README.md)**
+### Traffic flow (final minimal setup)
+```
+Client
+  → API Gateway default HTTPS endpoint (https://<api-id>.execute-api.<region>.amazonaws.com)
+  → JWT validated by Cognito
+  → NLB (HTTP)
+  → ingress-nginx
+  → Service (HTTP)
+```
+**One HTTPS termination point (API Gateway).** No ACM, no custom domain, no cert-manager.
 
 ---
 
@@ -66,8 +75,8 @@ cloud-native-devops-platform/
 
 | Stage | Status | Focus |
 |-------|--------|-------|
-| **1. Infrastructure** | ✅ | Terraform, AWS EKS, VPC |
-| **2. Networking** | ⏳ | NGINX Ingress, cert-manager |
+| **1. Infrastructure** | ✅ | Terraform, VPC, EKS, IAM, API Gateway, Cognito |
+| **2. Ingress** | ✅ | ingress-nginx, LoadBalancer, HTTP only |
 | **3. Platform Services** | ⏳ | Nexus, SonarQube, Argo CD |
 | **4. Microservices** | ✅ | Voting App, Helm chart |
 | **5. CI Pipeline** | ⏳ | Azure DevOps (configure in console) |
@@ -79,71 +88,83 @@ cloud-native-devops-platform/
 
 ## 🛠️ Tech Stack
 
-**Infrastructure:** Terraform, AWS (VPC, EKS, IAM, S3)  
-**Orchestration:** Kubernetes 1.35, Helm  
+**Infrastructure:** Terraform, AWS (VPC, EKS, IAM, API Gateway, Cognito, S3)  
+**Orchestration:** Kubernetes, Helm  
 **Application:** Python/Flask (vote), Node.js (result), .NET (worker), Redis, MongoDB Atlas  
-**CI/CD:** Azure DevOps (pipelines configured manually), Argo CD (planned)  
-**DevOps Tools:** Nexus, SonarQube, Vault (planned)  
-**Monitoring:** Datadog, CloudWatch (planned)
+**Ingress:** ingress-nginx, HTTP; TLS at API Gateway only  
+**CI/CD:** Azure DevOps (pipelines configured manually), Argo CD (planned)
 
 ---
 
 ## 🚀 Quick Start (high level)
 
 1. **Provision cluster**  
-   See [terraform/README.md](terraform/README.md): `terraform init` → `plan` → `apply` with your tfvars.
+   See [terraform/README.md](terraform/README.md): `terraform init` → `plan` → `apply` with **api_integration_uri = null** first. Capture **api_gateway_endpoint**.
 
 2. **Configure kubectl**  
    `aws eks update-kubeconfig --name <cluster-name> --region <region>`
 
-3. **Build and push images**  
-   Build from **voting-app/vote**, **voting-app/result**, **voting-app/worker** (e.g. in Azure DevOps or locally), push to your registry (ACR/ECR).
+3. **Deploy ingress-nginx**  
+   Confirm NLB DNS name; backend runs HTTP only.
 
-4. **Deploy the app**  
-   From repo root, using [helm/README.md](helm/README.md): set image registry in values, then  
-   `helm upgrade --install voting-app ./helm --values ./helm/values-nonprod.yaml`
+4. **Wire API Gateway to NLB**  
+   Set **api_integration_uri = http://&lt;nlb-dns&gt;** and run `terraform apply` again.
 
-5. **Create MongoDB secret**  
-   Create the `mongodb-atlas-credentials` secret in the cluster as described in [helm/README.md](helm/README.md).
+5. **Build and push images**  
+   Build from **voting-app/vote**, **voting-app/result**, **voting-app/worker**, push to your registry (ACR/ECR).
+
+6. **Deploy the app**  
+   From repo root: set image registry in values, then  
+   `helm upgrade --install voting-app ./helm-charts --values ./helm-charts/values-nonprod.yaml`
+
+7. **Create MongoDB secret**  
+   Create the `mongodb-atlas-credentials` secret in the cluster as described in [helm-charts/README.md](helm-charts/README.md).
 
 ---
 
 ## 📊 Architecture
 
-**Current (Stage 1 + Voting App):**
+**Current (minimal setup):**
 ```
 AWS Cloud
 └── VPC (Multi-AZ)
     ├── Public Subnets (IGW, NAT)
-    ├── Private Subnets (EKS Nodes)
+    ├── Private Subnets (EKS nodes, EKS LB discovery tags)
     └── EKS Cluster
         ├── Managed Node Groups
-        ├── Addons (CNI, DNS, Storage)
+        ├── Addons (CNI, DNS, proxy, EBS CSI)
         └── Voting App (Helm)
-            ├── vote (LoadBalancer)
-            ├── result (LoadBalancer)
-            ├── worker
-            └── redis (ClusterIP)
+            ├── ingress-nginx (LoadBalancer → NLB, HTTP)
+            ├── vote, result (HTTP)
+            ├── worker, redis (ClusterIP)
+API Gateway (HTTP API, $default stage)
+  → JWT (Cognito) → NLB → ingress-nginx → Services
 ```
 
 ---
 
 ## 📚 Documentation Index
 
-- **[README.md](README.md)** (this file) — Guide and linked structure
-- **[terraform/README.md](terraform/README.md)** — Infrastructure provisioning
+- **[README.md](README.md)** (this file) — Guide and structure
+- **[terraform/README.md](terraform/README.md)** — Infrastructure, apply flow, variables
 - **[voting-app/README.md](voting-app/README.md)** — Application source and build context
-- **[helm/README.md](helm/README.md)** — Helm chart: local (Minikube) vs deployed (EKS)
+- **[helm-charts/README.md](helm-charts/README.md)** — Helm chart: local (Minikube) vs EKS
 
 ---
 
 ## 📝 Changelog
 
+**January 31, 2026**
+- Minimal setup: removed ACM, Route53, API Gateway custom domain, cert-manager
+- API Gateway HTTP API with default HTTPS endpoint; Cognito + JWT authorizer
+- Ingress HTTP only; TLS only at API Gateway
+- Terraform modules: networking, iam, eks, irsa; apply flow (api_integration_uri in two steps)
+
 **January 29, 2026**
-- ✅ Stage 1 complete: Infrastructure foundation
+- Stage 1 complete: Infrastructure foundation
 - Terraform modules for VPC, IAM, EKS; multi-environment; remote state (S3)
 - Voting App and Helm chart; linked README structure
 
 ---
 
-_Last Updated: January 29, 2026 | Main README as guide_
+_Last Updated: January 31, 2026 | Main README as guide_

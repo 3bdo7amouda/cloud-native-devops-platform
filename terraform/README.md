@@ -2,28 +2,38 @@
 
 > **Stage 1** of the [Cloud-Native DevOps Platform](../README.md).
 
-Terraform configuration for AWS: VPC, EKS cluster, IAM roles, and Kubernetes addons. After provisioning, deploy the [Voting App with Helm](../helm/README.md); application source is in [voting-app/](../voting-app/README.md).
+Terraform configuration for AWS: VPC, EKS, IAM, API Gateway HTTP API, Cognito, and Kubernetes addons. After provisioning, deploy the [Voting App with Helm](../helm-charts/README.md); application source is in [voting-app/](../voting-app/README.md).
 
 ---
 
 ## 📋 What Gets Deployed
 
-### Networking (VPC Module)
-- VPC with public/private subnets across 2 AZs
-- Internet Gateway + NAT Gateway
-- Route tables with proper associations
-- Kubernetes subnet tags for load balancers
+### Networking (networking module)
+- **VPC** with public/private subnets (2 AZs)
+- **Internet Gateway** and **NAT Gateway**
+- **Route tables** and associations
+- **Subnet tags** for EKS load balancer discovery (`kubernetes.io/cluster/...`, `kubernetes.io/role/elb`, `kubernetes.io/role/internal-elb`)
+- **API Gateway HTTP API** with default stage (`$default`)
+- **Cognito** user pool and user pool client
+- **JWT authorizer** (Cognito) on API Gateway
+- **Integration + route** when `api_integration_uri` is set (proxy to NLB)
 
-### Security (IAM Module)
-- EKS cluster IAM role
-- Node group IAM role with required policies
-- SSM access for node debugging
+**No ACM, no Route53, no custom domain.** Public endpoint: `https://<api-id>.execute-api.<region>.amazonaws.com` — TLS handled by AWS.
 
-### Kubernetes (EKS Module)
-- EKS cluster (v1.35) with public/private endpoints
-- Managed node group (auto-scaling, latest Amazon Linux 2)
-- Essential addons: vpc-cni, kube-proxy, coredns, ebs-csi-driver
-- CloudWatch logging enabled
+### Security (IAM module)
+- EKS **cluster IAM role**
+- **Node group IAM role** (worker, CNI, ECR, optional SSM)
+
+### Kubernetes (EKS module)
+- **EKS cluster** with public/private endpoints
+- **Managed node group** (scaling config, instance types)
+- Addons: **vpc-cni**, **kube-proxy**, **coredns**
+- CloudWatch log group for cluster logs
+
+### IRSA (irsa module)
+- **OIDC provider** for the EKS cluster (required for IRSA)
+- **IRSA roles** (e.g. **EBS CSI** driver)
+- **EBS CSI addon** (created in root, uses IRSA role)
 
 ---
 
@@ -31,17 +41,17 @@ Terraform configuration for AWS: VPC, EKS cluster, IAM roles, and Kubernetes add
 
 ```
 terraform/
-├── main.tf                 # Orchestrates all modules
-├── variables.tf            # Variable declarations
+├── main.tf                 # Orchestrates modules + EBS CSI addon
+├── variables.tf            # Root variable declarations
 ├── outputs.tf              # Exposed outputs
-├── providers.tf            # AWS provider config
+├── providers.tf            # AWS provider
 ├── backend.tf              # S3 remote state
 ├── prod.tfvars             # Prod environment
-├── (nonprod via variables / tfvars)
 └── modules/
-    ├── vpc/                # Networking resources
-    ├── iam/                # IAM roles & policies
-    └── eks/                # EKS cluster & nodes
+    ├── networking/         # VPC, subnets, API Gateway, Cognito
+    ├── iam/                # EKS cluster + node roles
+    ├── eks/                # EKS cluster, node group, addons (no EBS CSI)
+    └── irsa/               # OIDC provider, IRSA roles (e.g. EBS CSI)
 ```
 
 ---
@@ -50,142 +60,117 @@ terraform/
 
 - Terraform >= 1.6.0
 - AWS CLI >= 2.0
-- kubectl >= 1.35
-- AWS account with admin access
+- kubectl (version aligned with EKS)
+- AWS account with sufficient permissions
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Apply Flow (two steps)
 
-### 1. Setup AWS Credentials
+### Step 1 — Initial apply (no backend yet)
 
-Create permanent IAM user credentials and configure AWS CLI:
-
-```bash
-# Configure credentials
-nano ~/.aws/credentials
-```
-
-```ini
-[default]
-aws_access_key_id = YOUR_ACCESS_KEY_ID
-aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
-```
+Set **api_integration_uri = null** (default). Apply to create VPC, EKS, API Gateway, Cognito, and IRSA.
 
 ```bash
-# Configure role assumption
-nano ~/.aws/config
-```
-
-```ini
-[default]
-region = us-east-1
-
-[profile devops-role]
-role_arn = arn:aws:iam::430118836758:role/terraform-deploy-role
-source_profile = default
-region = us-east-1
-```
-
-```bash
-# Set profile permanently
-echo 'export AWS_PROFILE=devops-role' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Verify:**
-```bash
-aws sts get-caller-identity
-# Should show the assumed role ARN
-```
-
----
-
-### 2. Create S3 Backend (One-time)
-
-```bash
-BUCKET="cloud-native-devops-platform-terraform-bucket"
-
-# Create bucket with versioning and encryption
-aws s3api create-bucket --bucket $BUCKET --region us-east-1
-aws s3api put-bucket-versioning --bucket $BUCKET --versioning-configuration Status=Enabled
-aws s3api put-bucket-encryption --bucket $BUCKET \
-  --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
-```
-
----
-
-### 3. Deploy Infrastructure
-
-From repository root, navigate to **terraform/**:
-
-```bash
-cd cloud-native-devops-platform/terraform
-
-# Initialize
+cd terraform
 terraform init
-
-# Preview changes
 terraform plan -var-file=prod.tfvars
-# or use your nonprod tfvars
-
-# Deploy
 terraform apply -var-file=prod.tfvars
 ```
 
----
-
-### 4. Access EKS Cluster
-
+**Capture output:**
 ```bash
-# Configure kubectl (use cluster name from your tfvars/outputs)
-aws eks update-kubeconfig \
-  --name nonprod-eks \
-  --region us-east-1
-
-# Verify
-kubectl get nodes
-kubectl get pods -A
+terraform output api_gateway_endpoint
+# e.g. https://xxxxxxxx.execute-api.us-east-1.amazonaws.com
 ```
 
-Next: build images from [voting-app/](../voting-app/README.md) and deploy with [helm/](../helm/README.md).
+### Step 2 — Deploy ingress-nginx and get NLB DNS
+
+- Deploy **ingress-nginx** (e.g. Helm or manifest) with Service type **LoadBalancer**.
+- Confirm the AWS-created **NLB** and its DNS name (e.g. `k8s-xxxxx-xxxxx.elb.amazonaws.com`).
+- Backend and ingress are **HTTP only** (port 80).
+
+### Step 3 — Wire API Gateway to NLB
+
+Set **api_integration_uri** to the NLB URL (HTTP):
+
+```hcl
+# e.g. in prod.tfvars or -var
+api_integration_uri = "http://k8s-xxxxx-xxxxx.elb.amazonaws.com"
+```
+
+Then apply again:
+
+```bash
+terraform apply -var-file=prod.tfvars
+```
+
+**Final traffic flow:**  
+Client → API Gateway (HTTPS) → JWT (Cognito) → NLB (HTTP) → ingress-nginx → Service (HTTP).
 
 ---
 
-## 📝 Configuration
+## 📝 Root Module — What to Pass
 
-Use **prod.tfvars** (or your own tfvars) for environment-specific variables. See **variables.tf** for all options.
+**Do NOT pass:** `domain_name`, `hosted_zone_id`.
+
+**Pass (among others):**
+- **cluster_name** — EKS and resource naming
+- **api_integration_uri** — `null` at first; then `http://<nlb-dns>` after NLB is ready
+- **tags** — Resource tags
+- **enable_cognito** — Enable Cognito + JWT (default `true`)
+- **cognito_user_pool_name** — Optional; defaults to `{cluster_name}-pool`
+- **api_name** — Optional; defaults to `{cluster_name}-http-api`
+
+Plus VPC/EKS variables (name_prefix, vpc_cidr, azs, subnets, cluster_version, node_*, etc.) as in **variables.tf** and **prod.tfvars**.
+
+---
+
+## 📝 Networking Module Variables (final)
+
+| Variable | Description |
+|----------|-------------|
+| `cluster_name` | Used for naming and tags |
+| `api_name` | Optional; API name |
+| `api_integration_uri` | Default `null`; set to `http://<nlb-dns>` after NLB exists |
+| `enable_cognito` | Create Cognito pool + client and JWT authorizer |
+| `cognito_user_pool_name` | Optional |
+| `tags` | Resource tags |
+
+Plus VPC-related: `name_prefix`, `vpc_cidr`, `azs`, `public_subnet_cidrs`, `private_subnet_cidrs`.
 
 ---
 
 ## 📊 Outputs
 
 ```bash
-# View all outputs
 terraform output
-
-# Common outputs
-terraform output vpc_id
-terraform output cluster_endpoint
+terraform output api_gateway_endpoint
 terraform output -raw cluster_name
+terraform output cluster_endpoint
 ```
 
 | Output | Description |
 |--------|-------------|
-| `vpc_id` | VPC identifier |
+| `vpc_id` | VPC ID |
 | `public_subnet_ids` | Public subnet IDs |
 | `private_subnet_ids` | Private subnet IDs |
 | `cluster_name` | EKS cluster name |
 | `cluster_endpoint` | Kubernetes API endpoint |
-| `oidc_issuer_url` | For IAM roles for service accounts |
+| `cluster_ca` | Cluster CA (sensitive) |
+| `oidc_issuer_url` | EKS OIDC issuer URL |
+| `oidc_provider_arn` | IAM OIDC provider ARN |
+| `irsa_role_arns` | Map of IRSA role ARNs (e.g. ebs_csi) |
+| `api_gateway_endpoint` | API Gateway default HTTPS endpoint |
+| `cognito_user_pool_id` | Cognito user pool ID |
+| `cognito_app_client_id` | Cognito app client ID |
 
 ---
 
 ## 🔒 State Management
 
-**Backend:** S3 with encryption and versioning
+**Backend:** S3 with versioning and encryption (see **backend.tf**).
 
-**Common operations:**
 ```bash
 terraform state list
 terraform refresh -var-file=prod.tfvars
@@ -196,20 +181,21 @@ terraform force-unlock <LOCK_ID>   # if state lock stuck
 
 ## 🐛 Troubleshooting
 
-### Expired Credentials
+**Expired credentials**
 ```bash
 rm -rf ~/.aws/cli/cache/*
 export AWS_PROFILE=devops-role
 aws sts get-caller-identity
 ```
 
-### Subnet / resource conflicts
+**Subnet / resource conflicts**
 ```bash
+terraform plan -destroy -var-file=prod.tfvars
 terraform destroy -var-file=prod.tfvars
-terraform apply -var-file=prod.tfvars
+# Fix tfvars, then apply again
 ```
 
-### Provider issues
+**Provider / init issues**
 ```bash
 rm -rf .terraform/
 terraform init
@@ -228,30 +214,30 @@ terraform destroy -var-file=prod.tfvars
 
 ## ✅ Status
 
-- [x] VPC with networking
-- [x] IAM roles for EKS
-- [x] EKS cluster (1.35)
-- [x] Managed node groups
-- [x] EKS addons (CNI, DNS, proxy, storage)
-- [x] Remote state in S3
-- [x] Multi-environment support
+- [x] VPC, subnets, IGW, NAT, routes, EKS subnet tags
+- [x] EKS cluster and managed node group
+- [x] IAM: cluster role, node role
+- [x] OIDC provider and IRSA (EBS CSI)
+- [x] API Gateway HTTP API, default stage
+- [x] Cognito user pool + client, JWT authorizer
+- [x] Optional integration/route when `api_integration_uri` is set
+- [x] No ACM, Route53, or cert-manager
 
 ---
 
 ## 🔜 Next Steps
 
-- **Stage 2:** NGINX Ingress, cert-manager, metrics-server
-- **Stage 3:** Nexus, SonarQube, persistent storage
-- **Deploy app:** [Helm chart](../helm/README.md) and [Voting App source](../voting-app/README.md)
+- Deploy **ingress-nginx**, set **api_integration_uri**, then apply again.
+- Deploy app: [Helm chart](../helm-charts/README.md) and [Voting App source](../voting-app/README.md).
 
 ---
 
 ## 📚 Documentation
 
 - [Main README](../README.md) — Platform guide and structure
-- [Helm chart](../helm/README.md) — Deploy Voting App on EKS
+- [Helm chart](../helm-charts/README.md) — Deploy Voting App on EKS
 - [Voting App source](../voting-app/README.md) — vote, result, worker build context
 
 ---
 
-**Last Updated:** January 29, 2026 | **Terraform:** >= 1.6.0 | **Kubernetes:** 1.35
+**Last Updated:** January 31, 2026 | **Terraform:** >= 1.6.0
