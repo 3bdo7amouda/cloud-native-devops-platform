@@ -17,7 +17,6 @@ module "iam" {
   attach_ssm      = var.attach_ssm
   tags            = var.tags
   oidc_issuer_url = module.eks.oidc_issuer_url
-  attach_ssm = var.attach_ssm
   irsa_roles = {
     ebs_csi = {
       namespace            = "kube-system"

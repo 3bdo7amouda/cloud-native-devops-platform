@@ -32,12 +32,6 @@ resource "aws_subnet" "public" {
   }
 }
 
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.this.id
