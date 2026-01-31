@@ -14,7 +14,6 @@ variable "tags" {
 
 variable "oidc_issuer_url" {
   type    = string
-  default = null
 }
 
 variable "irsa_roles" {

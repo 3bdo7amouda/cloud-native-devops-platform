@@ -56,23 +56,19 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 data "tls_certificate" "eks_oidc" {
-  count = var.oidc_issuer_url == null ? 0 : 1
-  url   = var.oidc_issuer_url
+  url = var.oidc_issuer_url
 }
 
 resource "aws_iam_openid_connect_provider" "eks" {
-  count = var.oidc_issuer_url == null ? 0 : 1
-
   url             = var.oidc_issuer_url
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks_oidc[0].certificates[0].sha1_fingerprint]
-
-  tags = var.tags
+  thumbprint_list = [data.tls_certificate.eks_oidc.certificates[0].sha1_fingerprint]
+  tags            = var.tags
 }
 
 locals {
-  oidc_provider_arn = try(aws_iam_openid_connect_provider.eks[0].arn, null)
-  oidc_hostpath     = var.oidc_issuer_url == null ? null : replace(var.oidc_issuer_url, "https://", "")
+  oidc_provider_arn = aws_iam_openid_connect_provider.eks.arn
+  oidc_hostpath     = replace(var.oidc_issuer_url, "https://", "")
 }
 
 data "aws_iam_policy_document" "irsa_assume" {

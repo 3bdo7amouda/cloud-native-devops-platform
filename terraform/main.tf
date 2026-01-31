@@ -16,6 +16,7 @@ module "iam" {
   tags            = var.tags
   oidc_issuer_url = module.eks.oidc_issuer_url
 
+
   irsa_roles = {
     ebs_csi = {
       namespace            = "kube-system"
