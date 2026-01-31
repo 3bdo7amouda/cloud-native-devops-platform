@@ -1,6 +1,3 @@
-# Infra Pipeline: Terraform → Tooling → Cluster Access → Helm → K8s Config → Vault → ESO → Outputs
-# Requires: Azure DevOps service connection for AWS (e.g. hamouda). Ensure prod.tfvars (and optionally nonprod.tfvars) exist under terraform/.
-
 trigger: none
 pr: none
 
@@ -10,9 +7,8 @@ parameters:
     type: string
     default: prod
     values: [nonprod, prod]
-
   - name: destroy
-    displayName: Destroy infrastructure
+    displayName: Destroy
     type: boolean
     default: false
 
@@ -21,479 +17,92 @@ variables:
   TF_VAR_FILE: '${{ parameters.env }}.tfvars'
   AWS_SERVICE_CONNECTION: hamouda
   AWS_REGION: us-east-1
-  # Set DD_API_KEY (secret) in variable group to enable Datadog Agent install
-  DD_SITE: datadoghq.com
 
-stages:
-  - stage: Checkout
-    displayName: '1. Checkout'
-    jobs:
-      - job: Source
-        displayName: Get repository
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - checkout: self
-            displayName: Checkout repository
+pool:
+  vmImage: ubuntu-latest
 
-  - stage: Infra
-    displayName: '2. Terraform apply'
-    dependsOn: Checkout
+steps:
+  - checkout: self
+
+  - task: TerraformInstaller@1
+    displayName: Install Terraform
+    inputs:
+      terraformVersion: latest
+
+  - task: AWSShellScript@1
+    displayName: Terraform init
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        terraform init -input=false
+
+  - task: AWSShellScript@1
+    displayName: Terraform plan
+    condition: eq('${{ parameters.destroy }}', false)
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
+
+  - task: AWSShellScript@1
+    displayName: Terraform plan -destroy
+    condition: eq('${{ parameters.destroy }}', true)
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        terraform plan -destroy -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
+
+  - task: AWSShellScript@1
+    displayName: Terraform apply
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        terraform apply -auto-approve -input=false tfplan
+
+  - task: KubectlInstaller@0
+    displayName: Install kubectl
     condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: ''
-      API_GATEWAY_ENDPOINT: ''
-      COGNITO_USER_POOL_ID: ''
-      COGNITO_APP_CLIENT_ID: ''
-      CLUSTER_ENDPOINT: ''
-    jobs:
-      - job: Terraform
-        displayName: Terraform init, plan, apply
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: TerraformInstaller@1
-            displayName: Install Terraform
-            inputs:
-              terraformVersion: latest
+    inputs:
+      kubectlVersion: 'latest'
 
-          - task: AWSShellScript@1
-            displayName: Terraform init
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform init -input=false
-
-          - task: AWSShellScript@1
-            displayName: Terraform plan
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
-
-          - task: AWSShellScript@1
-            displayName: Terraform apply
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform apply -auto-approve -input=false tfplan
-
-          - task: AWSShellScript@1
-            name: OutputTerraform
-            displayName: Capture Terraform outputs
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                CLUSTER_NAME=$(terraform output -raw cluster_name)
-                API_GATEWAY_ENDPOINT=$(terraform output -raw api_gateway_endpoint)
-                COGNITO_USER_POOL_ID=$(terraform output -raw cognito_user_pool_id 2>/dev/null || echo "")
-                COGNITO_APP_CLIENT_ID=$(terraform output -raw cognito_app_client_id 2>/dev/null || echo "")
-                CLUSTER_ENDPOINT=$(terraform output -raw cluster_endpoint)
-                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
-                echo "##vso[task.setvariable variable=API_GATEWAY_ENDPOINT;isOutput=true]$API_GATEWAY_ENDPOINT"
-                echo "##vso[task.setvariable variable=COGNITO_USER_POOL_ID;isOutput=true]$COGNITO_USER_POOL_ID"
-                echo "##vso[task.setvariable variable=COGNITO_APP_CLIENT_ID;isOutput=true]$COGNITO_APP_CLIENT_ID"
-                echo "##vso[task.setvariable variable=CLUSTER_ENDPOINT;isOutput=true]$CLUSTER_ENDPOINT"
-
-  - stage: InfraDestroy
-    displayName: '2b. Terraform destroy'
-    dependsOn: Checkout
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', true))
-    jobs:
-      - job: TerraformDestroy
-        displayName: Terraform plan destroy and apply
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: TerraformInstaller@1
-            displayName: Install Terraform
-            inputs:
-              terraformVersion: latest
-
-          - task: AWSShellScript@1
-            displayName: Terraform init
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform init -input=false
-
-          - task: AWSShellScript@1
-            displayName: Terraform plan -destroy
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform plan -destroy -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
-
-          - task: AWSShellScript@1
-            displayName: Terraform destroy
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                cd $(TF_DIR)
-                terraform apply -auto-approve -input=false tfplan
-
-  - stage: Tooling
-    displayName: '3. Install tooling'
-    dependsOn: Infra
+  - task: AWSShellScript@1
+    displayName: Update kubeconfig and verify nodes
     condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    jobs:
-      - job: InstallTools
-        displayName: Install kubectl and Helm
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        CLUSTER_NAME=$(terraform output -raw cluster_name)
+        aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)"
+        kubectl get nodes
 
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: 'latest'
-
-          - script: |
-              kubectl version --client
-              helm version
-            displayName: Verify tooling
-
-  - stage: ClusterAccess
-    displayName: '4. Cluster access'
-    dependsOn: Tooling
+  - task: AWSShellScript@1
+    displayName: Terraform outputs
     condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-    jobs:
-      - job: Kubeconfig
-        displayName: Update kubeconfig and verify nodes
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
-
-          - task: AWSShellScript@1
-            displayName: Update kubeconfig
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --name "$(CLUSTER_NAME)" --region "$(AWS_REGION)"
-
-          - task: Bash@3
-            displayName: Verify nodes
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                kubectl get nodes -o wide
-                kubectl get nodes --no-headers | wc -l
-
-  - stage: Helm
-    displayName: '5. Helm installs'
-    dependsOn: ClusterAccess
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-    jobs:
-      - job: HelmInstall
-        displayName: Install platform Helm charts
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
-
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: 'latest'
-
-          - task: AWSShellScript@1
-            displayName: Update kubeconfig
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --name "$(CLUSTER_NAME)" --region "$(AWS_REGION)"
-
-          - script: |
-              set -euo pipefail
-              helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-              helm repo add argo https://argoproj.github.io/argo-helm
-              helm repo add sonatype https://sonatype.github.io/helm3-charts/
-              helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-              helm repo add hashicorp https://helm.releases.hashicorp.com
-              helm repo add external-secrets https://charts.external-secrets.io
-              helm repo add datadog https://helm.datadoghq.com
-              helm repo update
-            displayName: Add Helm repos
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-                -n ingress-nginx --wait --timeout 5m
-            displayName: Install ingress-nginx
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install argocd argo/argo-cd -n argocd --wait --timeout 5m
-            displayName: Install Argo CD
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace nexus --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install nexus sonatype/nexus-repository-manager \
-                -n nexus --repo https://sonatype.github.io/helm3-charts/ --wait --timeout 5m
-            displayName: Install Nexus
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace sonarqube --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install sonarqube sonarqube/sonarqube \
-                -n sonarqube --repo https://SonarSource.github.io/helm-chart-sonarqube --wait --timeout 5m
-            displayName: Install SonarQube
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace vault --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install vault hashicorp/vault -n vault --wait --timeout 5m
-            displayName: Install Vault
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace external-secrets --dry-run=client -o yaml | kubectl apply -f -
-              helm upgrade --install external-secrets external-secrets/external-secrets \
-                -n external-secrets --set installCRDs=true --wait --timeout 5m
-            displayName: Install External Secrets Operator
-
-          - script: |
-              set -euo pipefail
-              kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
-              # DD_API_KEY and DD_SITE set in pipeline variables or variable group (e.g. DD_SITE=datadoghq.com)
-              helm upgrade --install datadog-agent datadog/datadog -n datadog \
-                --set datadog.apiKey=$(DD_API_KEY) \
-                --set datadog.site=$(DD_SITE) \
-                --set agents.podSecurity.apparmor.enabled=false \
-                --wait --timeout 5m
-            displayName: Install Datadog Agent
-            condition: and(succeeded(), ne('$(DD_API_KEY)', ''))
-            env:
-              DD_API_KEY: $(DD_API_KEY)
-              DD_SITE: $(DD_SITE)
-
-  - stage: K8sConfig
-    displayName: '6. Kubernetes configuration'
-    dependsOn: Helm
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-    jobs:
-      - job: ApplyManifests
-        displayName: Namespaces and ingress resources
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
-
-          - task: AWSShellScript@1
-            displayName: Update kubeconfig
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --name "$(CLUSTER_NAME)" --region "$(AWS_REGION)"
-
-          - script: |
-              set -euo pipefail
-              for ns in ingress-nginx argocd nexus sonarqube vault external-secrets datadog; do
-                kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
-              done
-            displayName: Ensure namespaces exist
-
-          - task: Bash@3
-            displayName: Apply Kubernetes config (namespaces, ingress with TLS)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                if [ -d "k8s-config" ]; then
-                  kubectl apply -f k8s-config/ -R
-                else
-                  echo "No k8s-config/ directory found; add manifests for ingress resources with TLS as needed."
-                fi
-              workingDirectory: $(Build.SourcesDirectory)
-
-  - stage: VaultConfig
-    displayName: '7. Vault configuration'
-    dependsOn: K8sConfig
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-    jobs:
-      - job: ConfigureVault
-        displayName: Kubernetes auth, KV v2, policies, roles
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
-
-          - task: AWSShellScript@1
-            displayName: Update kubeconfig
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --name "$(CLUSTER_NAME)" --region "$(AWS_REGION)"
-
-          - task: Bash@3
-            displayName: Vault configuration (Kubernetes auth, KV v2, policies, roles)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                if [ -f "vault-config/configure-vault.sh" ]; then
-                  chmod +x vault-config/configure-vault.sh
-                  ./vault-config/configure-vault.sh
-                elif [ -d "vault-config" ]; then
-                  echo "Add vault-config/configure-vault.sh or apply Vault config manifests in vault-config/"
-                else
-                  echo "No vault-config/ found. Add scripts to enable Kubernetes auth, KV v2, policies, and roles (VAULT_ADDR, VAULT_TOKEN via variable group)."
-                fi
-              workingDirectory: $(Build.SourcesDirectory)
-
-  - stage: ESOConfig
-    displayName: '8. ESO configuration'
-    dependsOn: VaultConfig
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-    jobs:
-      - job: ConfigureESO
-        displayName: SecretStore, ClusterSecretStore, ExternalSecrets
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: 'latest'
-
-          - task: AWSShellScript@1
-            displayName: Update kubeconfig
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --name "$(CLUSTER_NAME)" --region "$(AWS_REGION)"
-
-          - task: Bash@3
-            displayName: Apply ESO manifests (SecretStore, ExternalSecrets)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                if [ -d "k8s-config/external-secrets" ]; then
-                  kubectl apply -f k8s-config/external-secrets/ -R
-                else
-                  echo "No k8s-config/external-secrets/ found. Add SecretStore/ClusterSecretStore and ExternalSecret manifests as needed."
-                fi
-              workingDirectory: $(Build.SourcesDirectory)
-
-  - stage: Outputs
-    displayName: '9. Outputs'
-    dependsOn: ESOConfig
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    variables:
-      CLUSTER_NAME: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_NAME'] ]
-      API_GATEWAY_ENDPOINT: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.API_GATEWAY_ENDPOINT'] ]
-      COGNITO_USER_POOL_ID: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.COGNITO_USER_POOL_ID'] ]
-      COGNITO_APP_CLIENT_ID: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.COGNITO_APP_CLIENT_ID'] ]
-      CLUSTER_ENDPOINT: $[ stageDependencies.Infra.Terraform.outputs['OutputTerraform.CLUSTER_ENDPOINT'] ]
-    jobs:
-      - job: PublishOutputs
-        displayName: Publish URLs and endpoints
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - script: |
-              set -euo pipefail
-              cat << EOF > $(Build.SourcesDirectory)/.outputs.md
-              # Infrastructure outputs
-
-              | Output | Value |
-              |--------|-------|
-              | Cluster name | $(CLUSTER_NAME) |
-              | Cluster endpoint | $(CLUSTER_ENDPOINT) |
-              | API Gateway endpoint | $(API_GATEWAY_ENDPOINT) |
-              | Cognito user pool ID | $(COGNITO_USER_POOL_ID) |
-              | Cognito app client ID | $(COGNITO_APP_CLIENT_ID) |
-              EOF
-            displayName: Write outputs markdown
-
-          - task: Bash@3
-            displayName: Output URLs, API Gateway endpoint, Cognito details
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "=============================================="
-                echo "INFRASTRUCTURE OUTPUTS"
-                echo "=============================================="
-                echo "CLUSTER_NAME=$(CLUSTER_NAME)"
-                echo "CLUSTER_ENDPOINT=$(CLUSTER_ENDPOINT)"
-                echo "API_GATEWAY_ENDPOINT=$(API_GATEWAY_ENDPOINT)"
-                echo "COGNITO_USER_POOL_ID=$(COGNITO_USER_POOL_ID)"
-                echo "COGNITO_APP_CLIENT_ID=$(COGNITO_APP_CLIENT_ID)"
-                echo "=============================================="
-                cat $(Build.SourcesDirectory)/.outputs.md
-                echo "##vso[task.uploadsummary]$(Build.SourcesDirectory)/.outputs.md"
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd $(TF_DIR)
+        terraform output
