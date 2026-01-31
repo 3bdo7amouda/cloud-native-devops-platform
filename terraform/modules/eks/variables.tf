@@ -67,8 +67,3 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
-
-variable "ebs_csi_service_account_role_arn" {
-  type    = string
-  default = null
-}

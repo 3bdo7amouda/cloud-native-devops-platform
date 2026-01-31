@@ -1,29 +1,21 @@
 module "vpc" {
   source = "./modules/networking"
+
   name_prefix          = var.name_prefix
   vpc_cidr             = var.vpc_cidr
   azs                  = var.azs
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  cluster_name = var.cluster_name
-  tags         = var.tags
+  cluster_name         = var.cluster_name
+  tags                 = var.tags
 }
-
-
 
 module "iam" {
   source = "./modules/iam"
-  cluster_name    = var.cluster_name
-  attach_ssm      = var.attach_ssm
-  tags            = var.tags
-  oidc_issuer_url = module.eks.oidc_issuer_url
-  irsa_roles = {
-    ebs_csi = {
-      namespace            = "kube-system"
-      service_account_name = "ebs-csi-controller-sa"
-      policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
-    }
-  }
+
+  cluster_name = var.cluster_name
+  attach_ssm   = var.attach_ssm
+  tags         = var.tags
 }
 
 module "eks" {
@@ -43,6 +35,32 @@ module "eks" {
   node_max                  = var.node_max
   instance_types            = var.instance_types
   capacity_type             = var.capacity_type
-  ebs_csi_service_account_role_arn = module.iam.irsa_role_arns["ebs_csi"]
+  tags                      = var.tags
+}
+
+module "irsa" {
+  source = "./modules/irsa"
+
+  cluster_name     = var.cluster_name
+  oidc_issuer_url  = module.eks.oidc_issuer_url
+  irsa_roles = {
+    ebs_csi = {
+      namespace            = "kube-system"
+      service_account_name = "ebs-csi-controller-sa"
+      policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
+    }
+  }
   tags = var.tags
+}
+
+# EBS CSI addon created in root to break IAM ↔ EKS cycle:
+# EKS needs cluster/node roles (from IAM) and optionally EBS CSI role (from IRSA).
+# IRSA needs OIDC URL from EKS. So: IAM → EKS → IRSA → this addon.
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name             = module.eks.cluster_name
+  addon_name               = "aws-ebs-csi-driver"
+  service_account_role_arn = module.irsa.irsa_role_arns["ebs_csi"]
+
+  resolve_conflicts_on_update = "OVERWRITE"
+  tags                       = var.tags
 }
