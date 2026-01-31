@@ -27,19 +27,6 @@ variable "cluster_name" {
   type = string
 }
 
-variable "domain_name" {
-  type = string
-}
-
-variable "hosted_zone_id" {
-  type = string
-}
-
-variable "api_subdomain" {
-  type    = string
-  default = "api"
-}
-
 variable "api_name" {
   type    = string
   default = null

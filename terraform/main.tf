@@ -1,11 +1,16 @@
 module "vpc" {
   source = "./modules/networking"
+
   name_prefix          = var.name_prefix
   vpc_cidr             = var.vpc_cidr
   azs                  = var.azs
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
   cluster_name         = var.cluster_name
+  api_name             = var.api_name
+  api_integration_uri  = var.api_integration_uri
+  enable_cognito       = var.enable_cognito
+  cognito_user_pool_name = var.cognito_user_pool_name
   tags                 = var.tags
 }
 

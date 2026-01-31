@@ -85,7 +85,22 @@ variable "attach_ssm" {
   default = true
 }
 
+variable "api_name" {
+  type    = string
+  default = null
+}
+
 variable "api_integration_uri" {
+  type    = string
+  default = null
+}
+
+variable "enable_cognito" {
+  type    = bool
+  default = true
+}
+
+variable "cognito_user_pool_name" {
   type    = string
   default = null
 }

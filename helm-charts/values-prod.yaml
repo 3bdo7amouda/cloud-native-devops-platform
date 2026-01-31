@@ -63,8 +63,3 @@ ingress:
         - path: /
           pathType: Prefix
           service: result
-  tls:
-    - secretName: voting-app-tls
-      hosts:
-        - vote.yourcompany.com
-        - result.yourcompany.com

@@ -76,12 +76,10 @@ resources:
       memory: "256Mi"
       cpu: "200m"
 
-# Ingress configuration (optional)
+# Ingress configuration (optional) - HTTP only; TLS at API Gateway
 ingress:
   enabled: false
   className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: vote.example.com
       paths:
@@ -93,11 +91,6 @@ ingress:
         - path: /
           pathType: Prefix
           service: result
-  tls:
-    - secretName: voting-app-tls
-      hosts:
-        - vote.example.com
-        - result.example.com
 
 # Node affinity and tolerations
 affinity: {}
