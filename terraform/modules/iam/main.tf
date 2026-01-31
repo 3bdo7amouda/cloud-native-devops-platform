@@ -120,3 +120,48 @@ resource "aws_iam_role_policy_attachment" "irsa" {
   role       = aws_iam_role.irsa[each.value.role_key].name
   policy_arn = each.value.policy_arn
 }
+
+data "aws_iam_policy_document" "cert_manager_assume" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [var.oidc_provider_arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(var.oidc_issuer_url, "https://", "")}:sub"
+      values   = ["system:serviceaccount:cert-manager:cert-manager"]
+    }
+  }
+}
+
+resource "aws_iam_role" "cert_manager" {
+  name               = "${var.cluster_name}-cert-manager-irsa"
+  assume_role_policy = data.aws_iam_policy_document.cert_manager_assume.json
+  tags               = var.tags
+}
+
+resource "aws_iam_policy" "cert_manager_dns" {
+  name = "${var.cluster_name}-cert-manager-dns"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "route53:ChangeResourceRecordSets",
+        "route53:ListHostedZones",
+        "route53:ListResourceRecordSets",
+        "route53:GetChange"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "cert_manager_dns" {
+  role       = aws_iam_role.cert_manager.name
+  policy_arn = aws_iam_policy.cert_manager_dns.arn
+}

@@ -84,3 +84,8 @@ variable "attach_ssm" {
   type    = bool
   default = true
 }
+
+variable "api_integration_uri" {
+  type    = string
+  default = null
+}

@@ -24,3 +24,7 @@ variable "irsa_roles" {
   }))
   default = {}
 }
+
+variable "hosted_zone_id" {
+  type = string
+}

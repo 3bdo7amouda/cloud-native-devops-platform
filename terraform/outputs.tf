@@ -34,3 +34,19 @@ output "oidc_provider_arn" {
 output "irsa_role_arns" {
   value = module.iam.irsa_role_arns
 }
+
+output "api_gateway_endpoint" {
+  value = module.vpc.api_gateway_endpoint
+}
+
+output "cognito_user_pool_id" {
+  value = module.vpc.cognito_user_pool_id
+}
+
+output "cognito_app_client_id" {
+  value = module.vpc.cognito_app_client_id
+}
+
+output "cert_manager_irsa_role_arn" {
+  value = module.iam.cert_manager_irsa_role_arn
+}

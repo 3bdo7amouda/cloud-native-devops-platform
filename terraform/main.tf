@@ -1,13 +1,15 @@
 module "vpc" {
   source = "./modules/networking"
-
   name_prefix          = var.name_prefix
   vpc_cidr             = var.vpc_cidr
   azs                  = var.azs
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  tags                 = var.tags
+  cluster_name = var.cluster_name
+  tags         = var.tags
 }
+
+
 
 module "iam" {
   source = "./modules/iam"
@@ -15,8 +17,7 @@ module "iam" {
   attach_ssm      = var.attach_ssm
   tags            = var.tags
   oidc_issuer_url = module.eks.oidc_issuer_url
-
-
+  attach_ssm = var.attach_ssm
   irsa_roles = {
     ebs_csi = {
       namespace            = "kube-system"
