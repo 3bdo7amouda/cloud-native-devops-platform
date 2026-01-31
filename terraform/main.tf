@@ -11,10 +11,18 @@ module "vpc" {
 
 module "iam" {
   source = "./modules/iam"
+  cluster_name    = var.cluster_name
+  attach_ssm      = var.attach_ssm
+  tags            = var.tags
+  oidc_issuer_url = module.eks.oidc_issuer_url
 
-  cluster_name = var.cluster_name
-  attach_ssm   = var.attach_ssm
-  tags         = var.tags
+  irsa_roles = {
+    ebs_csi = {
+      namespace            = "kube-system"
+      service_account_name = "ebs-csi-controller-sa"
+      policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
+    }
+  }
 }
 
 module "eks" {
@@ -34,5 +42,6 @@ module "eks" {
   node_max                  = var.node_max
   instance_types            = var.instance_types
   capacity_type             = var.capacity_type
-  tags                      = var.tags
+  ebs_csi_service_account_role_arn = module.iam.irsa_role_arns["ebs_csi"]
+  tags = var.tags
 }
