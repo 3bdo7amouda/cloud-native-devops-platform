@@ -7,6 +7,7 @@ parameters:
     type: string
     default: prod
     values: [nonprod, prod]
+
   - name: destroy
     displayName: Destroy
     type: boolean
@@ -37,8 +38,20 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform init -input=false
+
+  - task: AWSShellScript@1
+    displayName: Terraform plan
+    condition: eq('${{ parameters.destroy }}', false)
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      scriptType: inline
+      inlineScript: |
+        set -euo pipefail
+        cd "$(TF_DIR)"
+        terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
 
   - task: AWSShellScript@1
     displayName: Terraform plan -destroy
@@ -49,7 +62,7 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform plan -destroy -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
 
   - task: AWSShellScript@1
@@ -60,14 +73,14 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform apply -auto-approve -input=false tfplan
 
   - task: KubectlInstaller@0
     displayName: Install kubectl
     condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
     inputs:
-      kubectlVersion: 'latest'
+      kubectlVersion: latest
 
   - task: AWSShellScript@1
     displayName: Update kubeconfig and verify nodes
@@ -78,8 +91,8 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
-        CLUSTER_NAME=$(terraform output -raw cluster_name)
+        cd "$(TF_DIR)"
+        CLUSTER_NAME="$(terraform output -raw cluster_name)"
         aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)"
         kubectl get nodes
 
@@ -92,5 +105,88 @@ steps:
       scriptType: inline
       inlineScript: |
         set -euo pipefail
-        cd $(TF_DIR)
+        cd "$(TF_DIR)"
         terraform output
+
+  - task: HelmInstaller@1
+    displayName: Install Helm
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      helmVersionToInstall: latest
+
+  - task: Bash@3
+    displayName: Helm repos add/update
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        helm repo add argo https://argoproj.github.io/argo-helm
+        helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+        helm repo add hashicorp https://helm.releases.hashicorp.com
+        helm repo add external-secrets https://charts.external-secrets.io
+        helm repo add datadog https://helm.datadoghq.com
+        helm repo update
+
+  - task: HelmDeploy@0
+    displayName: Deploy Argo CD
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      connectionType: 'None'
+      namespace: argocd
+      command: upgrade
+      chartType: Name
+      chartName: argo/argo-cd
+      releaseName: argocd
+      arguments: '--install --wait --atomic --timeout 15m --create-namespace'
+
+  - task: HelmDeploy@0
+    displayName: Deploy SonarQube
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      connectionType: 'None'
+      namespace: sonarqube
+      command: upgrade
+      chartType: Name
+      chartName: sonarqube/sonarqube
+      releaseName: sonarqube
+      arguments: '--install --wait --atomic --timeout 20m --create-namespace'
+
+  - task: HelmDeploy@0
+    displayName: Deploy Vault
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      connectionType: 'None'
+      namespace: vault
+      command: upgrade
+      chartType: Name
+      chartName: hashicorp/vault
+      releaseName: vault
+      arguments: '--install --wait --atomic --timeout 20m --create-namespace'
+
+  - task: HelmDeploy@0
+    displayName: Deploy External Secrets Operator
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      connectionType: 'None'
+      namespace: external-secrets
+      command: upgrade
+      chartType: Name
+      chartName: external-secrets/external-secrets
+      releaseName: external-secrets
+      arguments: '--install --wait --atomic --timeout 10m --create-namespace'
+
+  - task: HelmDeploy@0
+    displayName: Deploy Datadog Agent
+    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
+    inputs:
+      connectionType: 'None'
+      namespace: datadog
+      command: upgrade
+      chartType: Name
+      chartName: datadog/datadog
+      releaseName: datadog
+      arguments: >-
+        --install --wait --atomic --timeout 15m --create-namespace
+        --set datadog.apiKey=$(DD_API_KEY)
+        --set datadog.site=datadoghq.com
