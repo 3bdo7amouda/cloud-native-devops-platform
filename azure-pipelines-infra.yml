@@ -25,6 +25,14 @@ pool:
 steps:
   - checkout: self
 
+  - task: AWSCLI@1
+    displayName: Configure AWS credentials for job
+    inputs:
+      awsCredentials: $(AWS_SERVICE_CONNECTION)
+      regionName: $(AWS_REGION)
+      awsCommand: sts
+      awsSubCommand: get-caller-identity
+
   - task: TerraformInstaller@1
     displayName: Install Terraform
     inputs:
