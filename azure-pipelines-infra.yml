@@ -19,182 +19,134 @@ variables:
   AWS_SERVICE_CONNECTION: hamouda
   AWS_REGION: us-east-1
 
-pool:
-  vmImage: ubuntu-latest
+stages:
+  - stage: Infra
+    displayName: Infra (Terraform)
+    jobs:
+      - job: Terraform
+        displayName: Terraform
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
 
-steps:
-  - checkout: self
+          - task: TerraformInstaller@1
+            displayName: Install Terraform
+            inputs:
+              terraformVersion: latest
 
-  - task: AWSCLI@1
-    displayName: Configure AWS credentials for job
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      awsCommand: sts
-      awsSubCommand: get-caller-identity
+          - task: AWSShellScript@1
+            displayName: Terraform init
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                cd "$(TF_DIR)"
+                terraform init -input=false
 
-  - task: TerraformInstaller@1
-    displayName: Install Terraform
-    inputs:
-      terraformVersion: latest
+          - task: AWSShellScript@1
+            displayName: Terraform plan
+            condition: eq('${{ parameters.destroy }}', false)
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                cd "$(TF_DIR)"
+                terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
 
-  - task: AWSShellScript@1
-    displayName: Terraform init
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform init -input=false
+          - task: AWSShellScript@1
+            displayName: Terraform plan -destroy
+            condition: eq('${{ parameters.destroy }}', true)
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                cd "$(TF_DIR)"
+                terraform plan -destroy -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
 
-  - task: AWSShellScript@1
-    displayName: Terraform plan
-    condition: eq('${{ parameters.destroy }}', false)
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform plan -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
+          - task: AWSShellScript@1
+            displayName: Terraform apply
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                cd "$(TF_DIR)"
+                terraform apply -auto-approve -input=false tfplan
 
-  - task: AWSShellScript@1
-    displayName: Terraform plan -destroy
-    condition: eq('${{ parameters.destroy }}', true)
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform plan -destroy -out=tfplan -input=false -var-file="$(TF_VAR_FILE)"
-
-  - task: AWSShellScript@1
-    displayName: Terraform apply
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform apply -auto-approve -input=false tfplan
-
-  - task: KubectlInstaller@0
-    displayName: Install kubectl
+  - stage: Platform
+    displayName: Platform (EKS + Helm)
+    dependsOn: Infra
     condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      kubectlVersion: latest
+    jobs:
+      - job: DeployPlatform
+        displayName: Deploy platform charts
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
 
-  - task: AWSShellScript@1
-    displayName: Update kubeconfig and verify nodes
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        CLUSTER_NAME="$(terraform output -raw cluster_name)"
-        aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)"
-        kubectl get nodes
+          - task: KubectlInstaller@0
+            displayName: Install kubectl
+            inputs:
+              kubectlVersion: latest
 
-  - task: AWSShellScript@1
-    displayName: Terraform outputs
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      awsCredentials: $(AWS_SERVICE_CONNECTION)
-      regionName: $(AWS_REGION)
-      scriptType: inline
-      inlineScript: |
-        set -euo pipefail
-        cd "$(TF_DIR)"
-        terraform output
+          - task: HelmInstaller@1
+            displayName: Install Helm
+            inputs:
+              helmVersionToInstall: latest
 
-  - task: HelmInstaller@1
-    displayName: Install Helm
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      helmVersionToInstall: latest
+          - task: AWSShellScript@1
+            displayName: Configure kubeconfig + Deploy charts
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
 
-  - task: Bash@3
-    displayName: Helm repos add/update
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      targetType: inline
-      script: |
-        set -euo pipefail
-        helm repo add argo https://argoproj.github.io/argo-helm
-        helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-        helm repo add hashicorp https://helm.releases.hashicorp.com
-        helm repo add external-secrets https://charts.external-secrets.io
-        helm repo add datadog https://helm.datadoghq.com
-        helm repo update
+                : "${DD_API_KEY:?DD_API_KEY pipeline variable is required}"
 
-  - task: HelmDeploy@0
-    displayName: Deploy Argo CD
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      connectionType: 'None'
-      namespace: argocd
-      command: upgrade
-      chartType: Name
-      chartName: argo/argo-cd
-      releaseName: argocd
-      arguments: '--install --wait --rollback-on-failure --timeout 15m --create-namespace'
+                cd "$(TF_DIR)"
+                CLUSTER_NAME="$(terraform output -raw cluster_name)"
 
-  - task: HelmDeploy@0
-    displayName: Deploy SonarQube
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      connectionType: 'None'
-      namespace: sonarqube
-      command: upgrade
-      chartType: Name
-      chartName: sonarqube/sonarqube
-      releaseName: sonarqube
-      arguments: '--install --wait --rollback-on-failure --timeout 20m --create-namespace'
+                export KUBECONFIG="$(Pipeline.Workspace)/kubeconfig"
+                aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)" --kubeconfig "$KUBECONFIG"
 
-  - task: HelmDeploy@0
-    displayName: Deploy Vault
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      connectionType: 'None'
-      namespace: vault
-      command: upgrade
-      chartType: Name
-      chartName: hashicorp/vault
-      releaseName: vault
-      arguments: '--install --wait --rollback-on-failure --timeout 20m --create-namespace'
+                kubectl get nodes
 
-  - task: HelmDeploy@0
-    displayName: Deploy External Secrets Operator
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      connectionType: 'None'
-      namespace: external-secrets
-      command: upgrade
-      chartType: Name
-      chartName: external-secrets/external-secrets
-      releaseName: external-secrets
-      arguments: '--install --wait --rollback-on-failure --timeout 10m --create-namespace'
+                helm repo add argo https://argoproj.github.io/argo-helm
+                helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+                helm repo add hashicorp https://helm.releases.hashicorp.com
+                helm repo add external-secrets https://charts.external-secrets.io
+                helm repo add datadog https://helm.datadoghq.com
+                helm repo update
 
-  - task: HelmDeploy@0
-    displayName: Deploy Datadog Agent
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    inputs:
-      connectionType: 'None'
-      namespace: datadog
-      command: upgrade
-      chartType: Name
-      chartName: datadog/datadog
-      releaseName: datadog
-      arguments: >-
-        --install --wait --rollback-on-failure --timeout 15m --create-namespace
-        --set datadog.apiKey=$(DD_API_KEY)
-        --set datadog.site=datadoghq.com
+                helm upgrade --install argocd argo/argo-cd \
+                  --namespace argocd --create-namespace \
+                  --wait --rollback-on-failure --timeout 15m
+
+                helm upgrade --install sonarqube sonarqube/sonarqube \
+                  --namespace sonarqube --create-namespace \
+                  --wait --rollback-on-failure --timeout 20m
+
+                helm upgrade --install vault hashicorp/vault \
+                  --namespace vault --create-namespace \
+                  --wait --rollback-on-failure --timeout 20m
+
+                helm upgrade --install external-secrets external-secrets/external-secrets \
+                  --namespace external-secrets --create-namespace \
+                  --wait --rollback-on-failure --timeout 10m
+
+                helm upgrade --install datadog datadog/datadog \
+                  --namespace datadog --create-namespace \
+                  --wait --rollback-on-failure --timeout 15m \
+                  --set datadog.apiKey="$(DD_API_KEY)" \
+                  --set datadog.site=datadoghq.com
