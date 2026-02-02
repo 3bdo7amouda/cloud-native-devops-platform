@@ -20,7 +20,6 @@ variable "tags" {
   default = {}
 }
 
-# cert-manager IRSA: Route 53 DNS-01 (Pipeline 1)
 variable "enable_cert_manager_irsa" {
   type    = bool
   default = true

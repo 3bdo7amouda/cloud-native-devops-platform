@@ -1,10 +1,8 @@
 region = "us-east-1"
 
 name_prefix = "nonprod"
-
-vpc_cidr = "10.10.0.0/16"
-
-azs = ["us-east-1a", "us-east-1b"]
+vpc_cidr     = "10.10.0.0/16"
+azs          = ["us-east-1a", "us-east-1b"]
 
 public_subnet_cidrs  = ["10.10.1.0/24", "10.10.2.0/24"]
 private_subnet_cidrs = ["10.10.11.0/24", "10.10.12.0/24"]
@@ -15,10 +13,29 @@ tags = {
 }
 
 cluster_name    = "nonprod-eks"
-cluster_version = "1.30"
+cluster_version = "1.32" 
+
+endpoint_public_access  = true
+endpoint_private_access = false
+
+enabled_cluster_log_types = ["api", "audit", "authenticator"]
+log_retention_in_days     = 7
 
 node_desired   = 1
 node_min       = 1
 node_max       = 2
 instance_types = ["t3.medium"]
 capacity_type  = "ON_DEMAND"
+
+attach_ssm = true
+
+enable_cert_manager_irsa = false
+
+api_name            = null
+api_integration_uri = null
+
+enable_cognito         = false
+cognito_user_pool_name = null
+
+domain_name    = "3bdo7amouda.tech"
+hosted_zone_id = "Z05131842BXT9H3SPUW3F"

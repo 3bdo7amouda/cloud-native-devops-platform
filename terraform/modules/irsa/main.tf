@@ -64,7 +64,6 @@ resource "aws_iam_role_policy_attachment" "irsa" {
   policy_arn = each.value.policy_arn
 }
 
-# cert-manager IRSA: Route 53 DNS-01 for Let's Encrypt (Pipeline 1)
 data "aws_iam_policy_document" "cert_manager_assume" {
   count = var.enable_cert_manager_irsa ? 1 : 0
 

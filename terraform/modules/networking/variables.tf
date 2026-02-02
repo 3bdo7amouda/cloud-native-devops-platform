@@ -47,7 +47,6 @@ variable "cognito_user_pool_name" {
   default = null
 }
 
-# DNS baseline (Pipeline 1): create zone if domain_name set, else use existing hosted_zone_id
 variable "domain_name" {
   type    = string
   default = null

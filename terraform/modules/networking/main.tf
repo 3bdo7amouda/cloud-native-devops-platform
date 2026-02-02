@@ -99,7 +99,6 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# DNS baseline: Route 53 hosted zone (create if domain_name set; pre-steps may create zone and pass hosted_zone_id)
 resource "aws_route53_zone" "this" {
   count   = var.domain_name != null ? 1 : 0
   name    = var.domain_name
@@ -153,7 +152,6 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   }
 }
 
-# VPC Link / NLB integration: set api_integration_uri when NLB exists (e.g. created later by ingress-nginx)
 resource "aws_apigatewayv2_integration" "this" {
   count                  = var.api_integration_uri != null ? 1 : 0
   api_id                 = aws_apigatewayv2_api.this.id
@@ -163,7 +161,6 @@ resource "aws_apigatewayv2_integration" "this" {
   payload_format_version = "1.0"
 }
 
-# API Gateway routes: /api/* and /auth/* (Pipeline 1 - API only)
 resource "aws_apigatewayv2_route" "api" {
   count = var.api_integration_uri != null ? 1 : 0
 

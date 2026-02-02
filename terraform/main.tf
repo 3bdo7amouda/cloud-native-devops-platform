@@ -60,12 +60,12 @@ module "irsa" {
     external_secrets = {
       namespace            = "external-secrets"
       service_account_name = "external-secrets"
-      policy_arns          = [] # Vault/Secrets Manager; add ARNs if needed
+      policy_arns          = [] 
     }
     datadog = {
       namespace            = "datadog"
       service_account_name  = "datadog"
-      policy_arns          = [] # API key from ESO; add ARNs if needed
+      policy_arns          = [] 
     }
   }
   tags = var.tags
