@@ -1,17 +1,19 @@
 module "vpc" {
   source = "./modules/networking"
 
-  name_prefix          = var.name_prefix
-  vpc_cidr             = var.vpc_cidr
-  azs                  = var.azs
-  public_subnet_cidrs  = var.public_subnet_cidrs
-  private_subnet_cidrs = var.private_subnet_cidrs
-  cluster_name         = var.cluster_name
-  api_name             = var.api_name
-  api_integration_uri  = var.api_integration_uri
-  enable_cognito       = var.enable_cognito
+  name_prefix            = var.name_prefix
+  vpc_cidr               = var.vpc_cidr
+  azs                    = var.azs
+  public_subnet_cidrs   = var.public_subnet_cidrs
+  private_subnet_cidrs  = var.private_subnet_cidrs
+  cluster_name           = var.cluster_name
+  api_name               = var.api_name
+  api_integration_uri    = var.api_integration_uri
+  enable_cognito         = var.enable_cognito
   cognito_user_pool_name = var.cognito_user_pool_name
-  tags                 = var.tags
+  domain_name            = var.domain_name
+  hosted_zone_id         = var.hosted_zone_id
+  tags                   = var.tags
 }
 
 module "iam" {
@@ -45,13 +47,25 @@ module "eks" {
 module "irsa" {
   source = "./modules/irsa"
 
-  cluster_name     = var.cluster_name
-  oidc_issuer_url  = module.eks.oidc_issuer_url
+  cluster_name               = var.cluster_name
+  oidc_issuer_url            = module.eks.oidc_issuer_url
+  enable_cert_manager_irsa   = var.enable_cert_manager_irsa
+  cert_manager_hosted_zone_id = coalesce(var.cert_manager_hosted_zone_id, module.vpc.hosted_zone_id)
   irsa_roles = {
     ebs_csi = {
       namespace            = "kube-system"
       service_account_name = "ebs-csi-controller-sa"
       policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
+    }
+    external_secrets = {
+      namespace            = "external-secrets"
+      service_account_name = "external-secrets"
+      policy_arns          = [] # Vault/Secrets Manager; add ARNs if needed
+    }
+    datadog = {
+      namespace            = "datadog"
+      service_account_name  = "datadog"
+      policy_arns          = [] # API key from ESO; add ARNs if needed
     }
   }
   tags = var.tags

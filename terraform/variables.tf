@@ -90,6 +90,7 @@ variable "api_name" {
   default = null
 }
 
+# Set when NLB exists (e.g. after ingress-nginx); prepared for VPC Link / NLB integration (Pipeline 1)
 variable "api_integration_uri" {
   type    = string
   default = null
@@ -101,6 +102,28 @@ variable "enable_cognito" {
 }
 
 variable "cognito_user_pool_name" {
+  type    = string
+  default = null
+}
+
+# DNS baseline (Pipeline 1): create zone if domain_name set, else pass existing hosted_zone_id
+variable "domain_name" {
+  type    = string
+  default = null
+}
+
+variable "hosted_zone_id" {
+  type    = string
+  default = null
+}
+
+# cert-manager IRSA (Pipeline 1)
+variable "enable_cert_manager_irsa" {
+  type    = bool
+  default = true
+}
+
+variable "cert_manager_hosted_zone_id" {
   type    = string
   default = null
 }

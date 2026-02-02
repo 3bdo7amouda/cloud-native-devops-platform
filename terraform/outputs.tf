@@ -46,3 +46,16 @@ output "cognito_user_pool_id" {
 output "cognito_app_client_id" {
   value = module.vpc.cognito_app_client_id
 }
+
+# DNS baseline (Pipeline 1)
+output "hosted_zone_id" {
+  value = module.vpc.hosted_zone_id
+}
+
+output "route53_name_servers" {
+  value = module.vpc.route53_name_servers
+}
+
+output "cert_manager_irsa_role_arn" {
+  value = module.irsa.cert_manager_irsa_role_arn
+}
