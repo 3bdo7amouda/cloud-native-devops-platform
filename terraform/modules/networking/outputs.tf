@@ -18,10 +18,6 @@ output "hosted_zone_id" {
   value = local.hosted_zone_id
 }
 
-output "route53_name_servers" {
-  value = var.domain_name != null ? aws_route53_zone.this[0].name_servers : null
-}
-
 output "api_gateway_endpoint" {
   value = aws_apigatewayv2_api.this.api_endpoint
 }

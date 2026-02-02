@@ -47,11 +47,6 @@ variable "cognito_user_pool_name" {
   default = null
 }
 
-variable "domain_name" {
-  type    = string
-  default = null
-}
-
 variable "hosted_zone_id" {
   type    = string
   default = null

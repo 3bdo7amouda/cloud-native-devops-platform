@@ -99,18 +99,8 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-resource "aws_route53_zone" "this" {
-  count   = var.domain_name != null ? 1 : 0
-  name    = var.domain_name
-  comment = "Managed by Terraform (Pipeline 1)"
-  tags    = var.tags
-}
-
 locals {
-  hosted_zone_id = coalesce(
-    var.hosted_zone_id,
-    try(aws_route53_zone.this[0].zone_id, null)
-  )
+  hosted_zone_id = var.hosted_zone_id
 }
 
 resource "aws_cognito_user_pool" "this" {

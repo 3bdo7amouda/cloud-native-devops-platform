@@ -11,7 +11,6 @@ module "vpc" {
   api_integration_uri    = var.api_integration_uri
   enable_cognito         = var.enable_cognito
   cognito_user_pool_name = var.cognito_user_pool_name
-  domain_name            = var.domain_name
   hosted_zone_id         = var.hosted_zone_id
   tags                   = var.tags
 }

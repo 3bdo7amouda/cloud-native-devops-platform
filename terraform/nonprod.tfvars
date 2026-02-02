@@ -37,5 +37,4 @@ api_integration_uri = null
 enable_cognito         = false
 cognito_user_pool_name = null
 
-domain_name    = "3bdo7amouda.tech"
 hosted_zone_id = "Z05131842BXT9H3SPUW3F"
