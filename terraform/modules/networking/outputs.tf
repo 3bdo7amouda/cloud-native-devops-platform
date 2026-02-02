@@ -19,7 +19,7 @@ output "hosted_zone_id" {
 }
 
 output "api_gateway_endpoint" {
-  value = aws_apigatewayv2_api.this.api_endpoint
+  value = length(aws_apigatewayv2_api.this) > 0 ? aws_apigatewayv2_api.this[0].api_endpoint : null
 }
 
 output "cognito_user_pool_id" {
