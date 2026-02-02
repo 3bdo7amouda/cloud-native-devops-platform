@@ -16,7 +16,7 @@ parameters:
 variables:
   TF_DIR: terraform
   TF_VAR_FILE: '${{ parameters.env }}.tfvars'
-  AWS_SERVICE_CONNECTION: hamouda
+  AWS_SERVICE_CONNECTION: aws-cred
   AWS_REGION: us-east-1
 
 stages:
@@ -26,7 +26,7 @@ stages:
       - job: Terraform
         displayName: Terraform
         pool:
-          vmImage: ubuntu-latest
+          name: aws-self-hosted
         steps:
           - checkout: self
 
@@ -80,73 +80,3 @@ stages:
                 set -euo pipefail
                 cd "$(TF_DIR)"
                 terraform apply -auto-approve -input=false tfplan
-
-  - stage: Platform
-    displayName: Platform (EKS + Helm)
-    dependsOn: Infra
-    condition: and(succeeded(), eq('${{ parameters.destroy }}', false))
-    jobs:
-      - job: DeployPlatform
-        displayName: Deploy platform charts
-        pool:
-          vmImage: ubuntu-latest
-        steps:
-          - checkout: self
-
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: latest
-
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: latest
-
-          - task: AWSShellScript@1
-            displayName: Configure kubeconfig + Deploy charts
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-
-                : "${DD_API_KEY:?DD_API_KEY pipeline variable is required}"
-
-                cd "$(TF_DIR)"
-                CLUSTER_NAME="$(terraform output -raw cluster_name)"
-
-                export KUBECONFIG="$(Pipeline.Workspace)/kubeconfig"
-                aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$(AWS_REGION)" --kubeconfig "$KUBECONFIG"
-
-                kubectl get nodes
-
-                helm repo add argo https://argoproj.github.io/argo-helm
-                helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-                helm repo add hashicorp https://helm.releases.hashicorp.com
-                helm repo add external-secrets https://charts.external-secrets.io
-                helm repo add datadog https://helm.datadoghq.com
-                helm repo update
-
-                helm upgrade --install argocd argo/argo-cd \
-                  --namespace argocd --create-namespace \
-                  --wait --rollback-on-failure --timeout 15m
-
-                helm upgrade --install sonarqube sonarqube/sonarqube \
-                  --namespace sonarqube --create-namespace \
-                  --wait --rollback-on-failure --timeout 20m
-
-                helm upgrade --install vault hashicorp/vault \
-                  --namespace vault --create-namespace \
-                  --wait --rollback-on-failure --timeout 20m
-
-                helm upgrade --install external-secrets external-secrets/external-secrets \
-                  --namespace external-secrets --create-namespace \
-                  --wait --rollback-on-failure --timeout 10m
-
-                helm upgrade --install datadog datadog/datadog \
-                  --namespace datadog --create-namespace \
-                  --wait --rollback-on-failure --timeout 15m \
-                  --set datadog.apiKey="$(DD_API_KEY)" \
-                  --set datadog.site=datadoghq.com
