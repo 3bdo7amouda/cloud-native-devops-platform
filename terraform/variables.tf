@@ -119,3 +119,8 @@ variable "cert_manager_hosted_zone_id" {
   type    = string
   default = null
 }
+
+variable "enable_api_gateway" {
+  type    = bool
+  default = true
+}
