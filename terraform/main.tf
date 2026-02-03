@@ -1,6 +1,5 @@
 module "vpc" {
   source = "./modules/networking"
-
   name_prefix           = var.name_prefix
   vpc_id                = var.vpc_id
   vpc_cidr              = var.vpc_cidr
@@ -8,22 +7,17 @@ module "vpc" {
   public_subnet_cidrs    = var.public_subnet_cidrs
   private_subnet_cidrs   = var.private_subnet_cidrs
   cluster_name          = var.cluster_name
-
   hosted_zone_id        = var.hosted_zone_id
-
   enable_api_gateway    = var.enable_api_gateway
   api_name              = var.api_name
   api_integration_uri   = var.api_integration_uri
-
   enable_cognito        = var.enable_cognito
   cognito_user_pool_name = var.cognito_user_pool_name
-
   tags = var.tags
 }
 
 module "iam" {
   source = "./modules/iam"
-
   cluster_name = var.cluster_name
   attach_ssm   = var.attach_ssm
   tags         = var.tags
@@ -31,7 +25,6 @@ module "iam" {
 
 module "eks" {
   source = "./modules/eks"
-
   cluster_name              = var.cluster_name
   cluster_version           = var.cluster_version
   cluster_role_arn          = module.iam.cluster_role_arn
@@ -51,10 +44,8 @@ module "eks" {
 
 module "irsa" {
   source = "./modules/irsa"
-
   cluster_name    = var.cluster_name
   oidc_issuer_url = module.eks.oidc_issuer_url
-
   irsa_roles = {
     ebs_csi = {
       namespace            = "kube-system"
@@ -69,7 +60,6 @@ resource "aws_eks_addon" "ebs_csi" {
   cluster_name             = module.eks.cluster_name
   addon_name               = "aws-ebs-csi-driver"
   service_account_role_arn = module.irsa.irsa_role_arns["ebs_csi"]
-
   resolve_conflicts_on_update = "OVERWRITE"
   tags                       = var.tags
 }
