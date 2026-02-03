@@ -1,16 +1,11 @@
-# Use existing VPC
-data "aws_vpc" "existing" {
-  id = var.vpc_id
-}
-
 resource "aws_internet_gateway" "this" {
-  vpc_id = data.aws_vpc.existing.id
+  vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-igw" })
 }
 
 resource "aws_subnet" "public" {
   count                   = 2
-  vpc_id                  = data.aws_vpc.existing.id
+  vpc_id                  = var.vpc_id
   cidr_block              = var.public_subnet_cidrs[count.index]
   availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
@@ -29,7 +24,7 @@ resource "aws_subnet" "public" {
 
 resource "aws_subnet" "private" {
   count             = 2
-  vpc_id            = data.aws_vpc.existing.id
+  vpc_id            = var.vpc_id
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = var.azs[count.index]
 
@@ -46,7 +41,7 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
-  vpc_id = data.aws_vpc.existing.id
+  vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-rt-public" })
 }
 
@@ -75,7 +70,7 @@ resource "aws_nat_gateway" "this" {
 }
 
 resource "aws_route_table" "private" {
-  vpc_id = data.aws_vpc.existing.id
+  vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-rt-private" })
 }
 
