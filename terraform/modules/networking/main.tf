@@ -105,10 +105,6 @@ resource "aws_security_group" "vpc_link" {
   tags = merge(var.tags, { Name = "${var.name_prefix}-vpc-link-sg" })
 }
 
-locals {
-  hosted_zone_id = var.hosted_zone_id
-}
-
 resource "aws_cognito_user_pool" "this" {
   count = (var.enable_api_gateway && var.enable_cognito) ? 1 : 0
   name  = coalesce(var.cognito_user_pool_name, "${var.cluster_name}-pool")
@@ -154,7 +150,7 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   identity_sources = ["$request.header.Authorization"]
 
   jwt_configuration {
-    issuer   = "https://cognito-idp.${data.aws_region.current.id}.amazonaws.com/${aws_cognito_user_pool.this[0].id}"
+    issuer = aws_cognito_user_pool.this[0].endpoint
     audience = [aws_cognito_user_pool_client.this[0].id]
   }
 }
@@ -190,6 +186,6 @@ resource "aws_apigatewayv2_route" "auth" {
   route_key = "ANY /auth/{proxy+}"
   target    = "integrations/${aws_apigatewayv2_integration.this[0].id}"
 
-  authorization_type = var.enable_cognito ? "JWT" : "NONE"
-  authorizer_id      = var.enable_cognito ? aws_apigatewayv2_authorizer.jwt[0].id : null
+  authorization_type = "NONE"
+  authorizer_id      = null
 }
