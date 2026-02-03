@@ -1,5 +1,16 @@
 variable "name_prefix" { type = string }
-variable "vpc_cidr" { type = string }
+
+variable "vpc_id" {
+  type        = string
+  description = "ID of existing VPC to use"
+}
+
+variable "vpc_cidr" {
+  type        = string
+  default     = null
+  description = "VPC CIDR (optional, only needed if creating new VPC)"
+}
+
 variable "azs" { type = list(string) }
 variable "public_subnet_cidrs" { type = list(string) }
 variable "private_subnet_cidrs" { type = list(string) }

@@ -2,6 +2,7 @@ module "vpc" {
   source = "./modules/networking"
 
   name_prefix           = var.name_prefix
+  vpc_id                = var.vpc_id
   vpc_cidr              = var.vpc_cidr
   azs                   = var.azs
   public_subnet_cidrs    = var.public_subnet_cidrs

@@ -1,11 +1,12 @@
 region = "us-east-1"
 
 name_prefix = "nonprod"
-vpc_cidr     = "10.10.0.0/16"
+vpc_id       = "vpc-0e98d37ab3160b45f"
+vpc_cidr     = "172.30.0.0/16"
 azs          = ["us-east-1a", "us-east-1b"]
 
-public_subnet_cidrs  = ["10.10.1.0/24", "10.10.2.0/24"]
-private_subnet_cidrs = ["10.10.11.0/24", "10.10.12.0/24"]
+public_subnet_cidrs  = ["172.30.1.0/24", "172.30.2.0/24"]
+private_subnet_cidrs = ["172.30.11.0/24", "172.30.12.0/24"]
 
 tags = {
   env     = "nonprod"

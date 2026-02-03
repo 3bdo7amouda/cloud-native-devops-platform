@@ -2,15 +2,23 @@
 
 > **Stage 1** of the [Cloud-Native DevOps Platform](../README.md).
 
-Terraform configuration for AWS: VPC, EKS, IAM, API Gateway HTTP API, Cognito, and Kubernetes addons. After provisioning, deploy the [Voting App with Helm](../helm-charts/README.md); application source is in [voting-app/](../voting-app/README.md).
+Terraform configuration for AWS: EKS, IAM, API Gateway HTTP API, Cognito, and Kubernetes addons deployed in an existing VPC. After provisioning, deploy the [Voting App with Helm](../helm-charts/README.md); application source is in [voting-app/](../voting-app/README.md).
 
 ---
 
-## 📋 What Gets Deployed
+## 📋 Infrastructure Details
+
+### VPC Configuration
+- **VPC ID:** `vpc-0e98d37ab3160b45f`
+- **CIDR Block:** `172.30.0.0/16`
+- **Region:** `us-east-1`
+- **Availability Zones:** `us-east-1a`, `us-east-1b`
 
 ### Networking (networking module)
-- **VPC** with public/private subnets (2 AZs)
-- **Internet Gateway** and **NAT Gateway**
+- **Public Subnets:** `172.30.1.0/24`, `172.30.2.0/24` (2 AZs)
+- **Private Subnets:** `172.30.11.0/24`, `172.30.12.0/24` (2 AZs)
+- **Internet Gateway** for public subnet internet access
+- **NAT Gateway** with Elastic IP for private subnet internet access
 - **Route tables** and associations
 - **Subnet tags** for EKS load balancer discovery (`kubernetes.io/cluster/...`, `kubernetes.io/role/elb`, `kubernetes.io/role/internal-elb`)
 - **API Gateway HTTP API** with default stage (`$default`)
@@ -46,9 +54,9 @@ terraform/
 ├── outputs.tf              # Exposed outputs
 ├── providers.tf            # AWS provider
 ├── backend.tf              # S3 remote state
-├── prod.tfvars             # Prod environment
+├── nonprod.tfvars          # Non-prod environment
 └── modules/
-    ├── networking/         # VPC, subnets, API Gateway, Cognito
+    ├── networking/         # Subnets, IGW, NAT, API Gateway, Cognito
     ├── iam/                # EKS cluster + node roles
     ├── eks/                # EKS cluster, node group, addons (no EBS CSI)
     └── irsa/               # OIDC provider, IRSA roles (e.g. EBS CSI)
@@ -56,26 +64,24 @@ terraform/
 
 ---
 
-## 🔧 Prerequisites
+## 🚀 Quick Start
 
+### Prerequisites
 - Terraform >= 1.6.0
 - AWS CLI >= 2.0
 - kubectl (version aligned with EKS)
 - AWS account with sufficient permissions
+- Existing VPC: `vpc-0e98d37ab3160b45f`
 
----
+### Step 1 — Initial Apply
 
-## 🚀 Apply Flow (two steps)
-
-### Step 1 — Initial apply (no backend yet)
-
-Set **api_integration_uri = null** (default). Apply to create VPC, EKS, API Gateway, Cognito, and IRSA.
+Set **api_integration_uri = null** (default). Apply to create networking resources, EKS, API Gateway, Cognito, and IRSA.
 
 ```bash
 cd terraform
 terraform init
-terraform plan -var-file=prod.tfvars
-terraform apply -var-file=prod.tfvars
+terraform plan -var-file=nonprod.tfvars
+terraform apply -var-file=nonprod.tfvars
 ```
 
 **Capture output:**
@@ -95,14 +101,14 @@ terraform output api_gateway_endpoint
 Set **api_integration_uri** to the NLB URL (HTTP):
 
 ```hcl
-# e.g. in prod.tfvars or -var
+# e.g. in nonprod.tfvars or -var
 api_integration_uri = "http://k8s-xxxxx-xxxxx.elb.amazonaws.com"
 ```
 
 Then apply again:
 
 ```bash
-terraform apply -var-file=prod.tfvars
+terraform apply -var-file=nonprod.tfvars
 ```
 
 **Final traffic flow:**  
@@ -110,26 +116,34 @@ Client → API Gateway (HTTPS) → JWT (Cognito) → NLB (HTTP) → ingress-ngin
 
 ---
 
-## 📝 Root Module — What to Pass
+## 📝 Configuration
 
-**Do NOT pass:** `domain_name`, `hosted_zone_id`.
+### Root Module Variables
 
-**Pass (among others):**
+**Required:**
+- **vpc_id** — Existing VPC ID (`vpc-0e98d37ab3160b45f`)
 - **cluster_name** — EKS and resource naming
+- **azs** — Availability zones (e.g., `["us-east-1a", "us-east-1b"]`)
+- **public_subnet_cidrs** — Public subnet CIDRs within VPC CIDR
+- **private_subnet_cidrs** — Private subnet CIDRs within VPC CIDR
+
+**Optional:**
+- **vpc_cidr** — VPC CIDR for reference (default: `null`)
 - **api_integration_uri** — `null` at first; then `http://<nlb-dns>` after NLB is ready
-- **tags** — Resource tags
 - **enable_cognito** — Enable Cognito + JWT (default `true`)
 - **cognito_user_pool_name** — Optional; defaults to `{cluster_name}-pool`
 - **api_name** — Optional; defaults to `{cluster_name}-http-api`
+- **tags** — Resource tags
 
-Plus VPC/EKS variables (name_prefix, vpc_cidr, azs, subnets, cluster_version, node_*, etc.) as in **variables.tf** and **prod.tfvars**.
+Plus EKS variables (cluster_version, node_*, instance_types, etc.) as in **variables.tf** and **nonprod.tfvars**.
 
 ---
 
-## 📝 Networking Module Variables (final)
+## 📝 Networking Module Variables
 
 | Variable | Description |
 |----------|-------------|
+| `vpc_id` | Existing VPC ID |
 | `cluster_name` | Used for naming and tags |
 | `api_name` | Optional; API name |
 | `api_integration_uri` | Default `null`; set to `http://<nlb-dns>` after NLB exists |
@@ -137,7 +151,7 @@ Plus VPC/EKS variables (name_prefix, vpc_cidr, azs, subnets, cluster_version, no
 | `cognito_user_pool_name` | Optional |
 | `tags` | Resource tags |
 
-Plus VPC-related: `name_prefix`, `vpc_cidr`, `azs`, `public_subnet_cidrs`, `private_subnet_cidrs`.
+Plus: `name_prefix`, `vpc_cidr`, `azs`, `public_subnet_cidrs`, `private_subnet_cidrs`.
 
 ---
 
@@ -173,7 +187,7 @@ terraform output cluster_endpoint
 
 ```bash
 terraform state list
-terraform refresh -var-file=prod.tfvars
+terraform refresh -var-file=nonprod.tfvars
 terraform force-unlock <LOCK_ID>   # if state lock stuck
 ```
 
@@ -190,8 +204,8 @@ aws sts get-caller-identity
 
 **Subnet / resource conflicts**
 ```bash
-terraform plan -destroy -var-file=prod.tfvars
-terraform destroy -var-file=prod.tfvars
+terraform plan -destroy -var-file=nonprod.tfvars
+terraform destroy -var-file=nonprod.tfvars
 # Fix tfvars, then apply again
 ```
 
@@ -206,15 +220,16 @@ terraform init
 ## 🗑️ Cleanup
 
 ```bash
-terraform plan -destroy -var-file=prod.tfvars
-terraform destroy -var-file=prod.tfvars
+terraform plan -destroy -var-file=nonprod.tfvars
+terraform destroy -var-file=nonprod.tfvars
 ```
 
 ---
 
 ## ✅ Status
 
-- [x] VPC, subnets, IGW, NAT, routes, EKS subnet tags
+- [x] Using existing VPC (`vpc-0e98d37ab3160b45f`)
+- [x] Public/private subnets, IGW, NAT, routes, EKS subnet tags
 - [x] EKS cluster and managed node group
 - [x] IAM: cluster role, node role
 - [x] OIDC provider and IRSA (EBS CSI)
@@ -240,4 +255,4 @@ terraform destroy -var-file=prod.tfvars
 
 ---
 
-**Last Updated:** January 31, 2026 | **Terraform:** >= 1.6.0
+**Last Updated:** February 3, 2026 | **Terraform:** >= 1.6.0

@@ -6,8 +6,15 @@ variable "name_prefix" {
   type = string
 }
 
+variable "vpc_id" {
+  type        = string
+  description = "ID of existing VPC to use"
+}
+
 variable "vpc_cidr" {
-  type = string
+  type        = string
+  default     = null
+  description = "VPC CIDR (optional, only for reference)"
 }
 
 variable "azs" {
