@@ -117,15 +117,6 @@ variable "hosted_zone_id" {
   type    = string
   default = null
 }
-variable "enable_cert_manager_irsa" {
-  type    = bool
-  default = true
-}
-
-variable "cert_manager_hosted_zone_id" {
-  type    = string
-  default = null
-}
 
 variable "enable_api_gateway" {
   type    = bool

@@ -19,13 +19,3 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
-
-variable "enable_cert_manager_irsa" {
-  type    = bool
-  default = true
-}
-
-variable "cert_manager_hosted_zone_id" {
-  type    = string
-  default = null
-}

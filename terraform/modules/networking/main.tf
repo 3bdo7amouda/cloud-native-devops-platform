@@ -1,3 +1,5 @@
+data "aws_region" "current" {}
+
 resource "aws_internet_gateway" "this" {
   vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-igw" })
@@ -86,12 +88,27 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
-# Route53 (EXISTING ONLY)
+resource "aws_security_group" "vpc_link" {
+  count = var.enable_api_gateway ? 1 : 0
+
+  name        = "${var.name_prefix}-vpc-link-sg"
+  description = "Security group for API Gateway VPC Link"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-vpc-link-sg" })
+}
+
 locals {
   hosted_zone_id = var.hosted_zone_id
 }
 
-# Cognito (Pipeline 1)
 resource "aws_cognito_user_pool" "this" {
   count = (var.enable_api_gateway && var.enable_cognito) ? 1 : 0
   name  = coalesce(var.cognito_user_pool_name, "${var.cluster_name}-pool")
@@ -105,7 +122,6 @@ resource "aws_cognito_user_pool_client" "this" {
   generate_secret = false
 }
 
-# API Gateway (Pipeline 1)
 resource "aws_apigatewayv2_api" "this" {
   count         = var.enable_api_gateway ? 1 : 0
   name          = coalesce(var.api_name, "${var.cluster_name}-http-api")
@@ -120,13 +136,12 @@ resource "aws_apigatewayv2_stage" "this" {
   auto_deploy = true
 }
 
-# VPC Link prepared for later NLB integration (Pipeline 2 provides the NLB)
 resource "aws_apigatewayv2_vpc_link" "this" {
   count = var.enable_api_gateway ? 1 : 0
 
   name               = "${var.cluster_name}-vpc-link"
   subnet_ids         = [for s in aws_subnet.private : s.id]
-  security_group_ids = []
+  security_group_ids = [aws_security_group.vpc_link[0].id]
 
   tags = var.tags
 }
@@ -139,12 +154,11 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   identity_sources = ["$request.header.Authorization"]
 
   jwt_configuration {
-    issuer   = "https://${aws_cognito_user_pool.this[0].endpoint}"
+    issuer   = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.this[0].id}"
     audience = [aws_cognito_user_pool_client.this[0].id]
   }
 }
 
-# Integration + routes are created ONLY when NLB listener ARN exists
 resource "aws_apigatewayv2_integration" "this" {
   count = (var.enable_api_gateway && var.api_integration_uri != null) ? 1 : 0
 

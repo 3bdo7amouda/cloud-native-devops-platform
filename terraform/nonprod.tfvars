@@ -30,8 +30,6 @@ capacity_type  = "ON_DEMAND"
 
 attach_ssm = true
 
-enable_cert_manager_irsa = false
-
 enable_api_gateway = true
 enable_cognito     = true
 

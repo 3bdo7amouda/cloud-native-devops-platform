@@ -48,9 +48,6 @@ output "cognito_app_client_id" {
 }
 
 output "hosted_zone_id" {
-  value = module.vpc.hosted_zone_id
-}
-
-output "cert_manager_irsa_role_arn" {
-  value = module.irsa.cert_manager_irsa_role_arn
+  description = "Route53 hosted zone ID (passthrough from input)"
+  value       = var.hosted_zone_id
 }

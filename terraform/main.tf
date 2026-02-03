@@ -52,19 +52,19 @@ module "eks" {
 module "irsa" {
   source = "./modules/irsa"
 
-  cluster_name               = var.cluster_name
-  oidc_issuer_url            = module.eks.oidc_issuer_url
-  enable_cert_manager_irsa   = var.enable_cert_manager_irsa
-  cert_manager_hosted_zone_id = coalesce(var.cert_manager_hosted_zone_id, module.vpc.hosted_zone_id)
-irsa_roles = {
-  ebs_csi = {
-    namespace            = "kube-system"
-    service_account_name = "ebs-csi-controller-sa"
-    policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
+  cluster_name    = var.cluster_name
+  oidc_issuer_url = module.eks.oidc_issuer_url
+
+  irsa_roles = {
+    ebs_csi = {
+      namespace            = "kube-system"
+      service_account_name = "ebs-csi-controller-sa"
+      policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
+    }
   }
-}
   tags = var.tags
 }
+
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name             = module.eks.cluster_name
   addon_name               = "aws-ebs-csi-driver"

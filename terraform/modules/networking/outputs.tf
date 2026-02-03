@@ -14,8 +14,8 @@ output "nat_gateway_id" {
   value = aws_nat_gateway.this.id
 }
 
-output "hosted_zone_id" {
-  value = local.hosted_zone_id
+output "vpc_link_security_group_id" {
+  value = length(aws_security_group.vpc_link) > 0 ? aws_security_group.vpc_link[0].id : null
 }
 
 output "api_gateway_endpoint" {
