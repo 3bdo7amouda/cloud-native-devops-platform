@@ -1,0 +1,223 @@
+trigger: none
+pr: none
+
+parameters:
+  - name: env
+    displayName: Environment
+    type: string
+    default: nonprod
+    values: [nonprod, prod]
+
+variables:
+  AWS_REGION: us-east-1
+  AWS_SERVICE_CONNECTION: aws-cred
+  NAMESPACES_MANIFEST: k8s-config/namespaces.yaml
+  CLUSTERISSUER_MANIFEST: k8s-config/clusterissuer.yaml
+  APP_CHART_PATH: helm-charts
+  APP_VALUES_FILE: helm-charts/values-${{ parameters.env }}.yaml
+
+stages:
+  - stage: PlatformAndApp
+    displayName: Platform Tools + App
+    jobs:
+      - job: Deploy
+        pool:
+          name: aws-self-hosted
+
+        steps:
+          - checkout: self
+
+          - task: AWSShellScript@1
+            displayName: Get EKS cluster name
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
+                if [ -z "${CLUSTER_NAME}" ] || [ "${CLUSTER_NAME}" = "None" ]; then
+                  echo "No EKS clusters found in $(AWS_REGION)"
+                  exit 1
+                fi
+                echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
+                echo "Cluster: ${CLUSTER_NAME}"
+
+          - task: AWSShellScript@1
+            displayName: Configure kubeconfig
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "$(CLUSTER_NAME)"
+                kubectl config current-context
+
+          - task: KubernetesManifest@1
+            displayName: Apply namespaces
+            inputs:
+              action: deploy
+              connectionType: none
+              manifests: |
+                $(NAMESPACES_MANIFEST)
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (eks)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add eks https://aws.github.io/eks-charts
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (ingress-nginx)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add ingress-nginx https://kubernetes.github.io/ingress-nginx
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (jetstack)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add jetstack https://charts.jetstack.io
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (argo)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add argo https://argoproj.github.io/argo-helm
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (hashicorp)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add hashicorp https://helm.releases.hashicorp.com
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (external-secrets)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add external-secrets https://charts.external-secrets.io
+
+          - task: HelmDeploy@0
+            displayName: Helm repo add (datadog)
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: add datadog https://helm.datadoghq.com
+
+          - task: HelmDeploy@0
+            displayName: Helm repo update
+            inputs:
+              connectionType: None
+              command: repo
+              arguments: update
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade AWS Load Balancer Controller
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: aws-load-balancer-controller
+              namespace: kube-system
+              chartType: Name
+              chartName: eks/aws-load-balancer-controller
+              arguments: >
+                --install --wait --timeout 10m
+                --set clusterName=$(CLUSTER_NAME)
+                --set region=$(AWS_REGION)
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade ingress-nginx (NLB)
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: ingress-nginx
+              namespace: ingress-nginx
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              arguments: >
+                --install --wait --timeout 10m
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade cert-manager
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: cert-manager
+              namespace: cert-manager
+              chartType: Name
+              chartName: jetstack/cert-manager
+              arguments: >
+                --install --wait --timeout 10m
+                --set installCRDs=true
+
+          - task: KubernetesManifest@1
+            displayName: Apply ClusterIssuer (Route53 DNS-01)
+            inputs:
+              action: deploy
+              connectionType: none
+              manifests: |
+                $(CLUSTERISSUER_MANIFEST)
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade Argo CD
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: argocd
+              namespace: argocd
+              chartType: Name
+              chartName: argo/argo-cd
+              arguments: --install --wait --timeout 10m
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade Vault
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: vault
+              namespace: vault
+              chartType: Name
+              chartName: hashicorp/vault
+              arguments: --install --wait --timeout 10m
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade External Secrets Operator
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: external-secrets
+              namespace: external-secrets
+              chartType: Name
+              chartName: external-secrets/external-secrets
+              arguments: --install --wait --timeout 10m
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade Datadog Agent
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: datadog
+              namespace: datadog
+              chartType: Name
+              chartName: datadog/datadog
+              arguments: --install --wait --timeout 10m
+
+          - task: HelmDeploy@0
+            displayName: Install/Upgrade Voting App (local chart)
+            inputs:
+              connectionType: None
+              command: upgrade
+              releaseName: voting-app
+              namespace: voting-app
+              chartType: FilePath
+              chartPath: $(APP_CHART_PATH)
+              valueFile: $(APP_VALUES_FILE)
+              arguments: --install --wait --timeout 10m
