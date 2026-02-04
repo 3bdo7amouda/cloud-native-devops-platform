@@ -16,53 +16,27 @@ stages:
   - stage: DeployPlatform
     displayName: Deploy Platform Services
     jobs:
-      - job: Setup
-        displayName: Configure Cluster Access
-        pool:
-          name: aws-self-hosted
-        steps:
-          - task: AWSCLI@1
-            displayName: Configure AWS credentials
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              awsCommand: eks
-              awsSubCommand: list-clusters
-              awsArguments: --query 'clusters[0]' --output text
-            name: getCluster
-          
-          - task: Bash@3
-            displayName: Export cluster info
-            inputs:
-              targetType: inline
-              script: |
-                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
-                VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
-                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
-                echo "##vso[task.setvariable variable=VPC_ID;isOutput=true]$VPC_ID"
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            name: clusterInfo
-
       - job: DeployTools
         displayName: Deploy Platform Tools
-        dependsOn: Setup
         pool:
           name: aws-self-hosted
-        variables:
-          CLUSTER_NAME: $[ dependencies.Setup.outputs['clusterInfo.CLUSTER_NAME'] ]
-          VPC_ID: $[ dependencies.Setup.outputs['clusterInfo.VPC_ID'] ]
         steps:
-          - task: AWSCLI@1
-            displayName: Configure kubeconfig
+          - task: AWSShellScript@1
+            displayName: Setup cluster info
+            name: setup
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
-              awsCommand: eks
-              awsSubCommand: update-kubeconfig
-              awsArguments: --name $(CLUSTER_NAME) --region $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
+                VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+                aws eks update-kubeconfig --region $(AWS_REGION) --name "$CLUSTER_NAME"
+                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
+                echo "##vso[task.setvariable variable=VPC_ID;isOutput=true]$VPC_ID"
+                echo "Cluster: $CLUSTER_NAME"
+                echo "VPC: $VPC_ID"
 
           - task: Bash@3
             displayName: Add Helm repositories
@@ -86,7 +60,7 @@ stages:
               chartType: Name
               chartName: eks/aws-load-balancer-controller
               releaseName: aws-load-balancer-controller
-              overrideValues: clusterName=$(CLUSTER_NAME),region=$(AWS_REGION),vpcId=$(VPC_ID)
+              overrideValues: clusterName=$(setup.CLUSTER_NAME),region=$(AWS_REGION),vpcId=$(setup.VPC_ID)
               install: true
               waitForExecution: true
               arguments: --timeout 10m
@@ -100,10 +74,7 @@ stages:
               chartType: Name
               chartName: ingress-nginx/ingress-nginx
               releaseName: ingress-nginx
-              overrideValues: |
-                controller.service.type=LoadBalancer
-                controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-                controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
+              overrideValues: controller.service.type=LoadBalancer,controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb,controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
               install: true
               waitForExecution: true
               arguments: --create-namespace --timeout 10m
@@ -161,3 +132,16 @@ stages:
               install: true
               waitForExecution: true
               arguments: --create-namespace --timeout 10m
+
+          - task: Bash@3
+            displayName: Deployment Summary
+            inputs:
+              targetType: inline
+              script: |
+                echo "========================================="
+                echo "PLATFORM DEPLOYMENT COMPLETE"
+                echo "========================================="
+                echo "Cluster: $(setup.CLUSTER_NAME)"
+                NLB_DNS=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                echo "NLB DNS: $NLB_DNS"
+                echo "========================================="
