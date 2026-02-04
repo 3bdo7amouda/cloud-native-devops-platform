@@ -199,25 +199,25 @@ stages:
               chartName: external-secrets/external-secrets
               arguments: --install --wait --timeout 10m
 
-          - task: HelmDeploy@0
-            displayName: Install/Upgrade Datadog Agent
-            inputs:
-              connectionType: None
-              command: upgrade
-              releaseName: datadog
-              namespace: datadog
-              chartType: Name
-              chartName: datadog/datadog
-              arguments: --install --wait --timeout 10m
+          # - task: HelmDeploy@0
+          #   displayName: Install/Upgrade Datadog Agent
+          #   inputs:
+          #     connectionType: None
+          #     command: upgrade
+          #     releaseName: datadog
+          #     namespace: datadog
+          #     chartType: Name
+          #     chartName: datadog/datadog
+          #     arguments: --install --wait --timeout 10m
 
-          - task: HelmDeploy@0
-            displayName: Install/Upgrade Voting App (local chart)
-            inputs:
-              connectionType: None
-              command: upgrade
-              releaseName: voting-app
-              namespace: voting-app
-              chartType: FilePath
-              chartPath: $(APP_CHART_PATH)
-              valueFile: $(APP_VALUES_FILE)
-              arguments: --install --wait --timeout 10m
+          # - task: HelmDeploy@0
+          #   displayName: Install/Upgrade Voting App (local chart)
+          #   inputs:
+          #     connectionType: None
+          #     command: upgrade
+          #     releaseName: voting-app
+          #     namespace: voting-app
+          #     chartType: FilePath
+          #     chartPath: $(APP_CHART_PATH)
+          #     valueFile: $(APP_VALUES_FILE)
+          #     arguments: --install --wait --timeout 10m
