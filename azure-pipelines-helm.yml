@@ -11,7 +11,6 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
-  NAMESPACES_MANIFEST: k8s-config/namespaces.yaml
   CLUSTERISSUER_MANIFEST: k8s-config/clusterissuer.yaml
   APP_CHART_PATH: helm-charts
   APP_VALUES_FILE: helm-charts/values-${{ parameters.env }}.yaml
@@ -28,7 +27,7 @@ stages:
           - checkout: self
 
           - task: AWSShellScript@1
-            displayName: Get EKS cluster name
+            displayName: Discover EKS cluster info
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
@@ -40,8 +39,11 @@ stages:
                   echo "No EKS clusters found in $(AWS_REGION)"
                   exit 1
                 fi
+                VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
+                echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
                 echo "Cluster: ${CLUSTER_NAME}"
+                echo "VPC: ${VPC_ID}"
 
           - task: AWSShellScript@1
             displayName: Configure kubeconfig
@@ -54,27 +56,12 @@ stages:
                 aws eks update-kubeconfig --region "$(AWS_REGION)" --name "$(CLUSTER_NAME)"
                 kubectl config current-context
 
-          - task: KubernetesManifest@1
-            displayName: Apply namespaces
-            inputs:
-              action: deploy
-              connectionType: none
-              manifests: |
-                $(NAMESPACES_MANIFEST)
-
           - task: HelmDeploy@0
             displayName: Helm repo add (eks)
             inputs:
               connectionType: None
               command: repo
               arguments: add eks https://aws.github.io/eks-charts
-
-          - task: HelmDeploy@0
-            displayName: Helm repo add (ingress-nginx)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add ingress-nginx https://kubernetes.github.io/ingress-nginx
 
           - task: HelmDeploy@0
             displayName: Helm repo add (jetstack)
@@ -105,13 +92,6 @@ stages:
               arguments: add external-secrets https://charts.external-secrets.io
 
           - task: HelmDeploy@0
-            displayName: Helm repo add (datadog)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add datadog https://helm.datadoghq.com
-
-          - task: HelmDeploy@0
             displayName: Helm repo update
             inputs:
               connectionType: None
@@ -131,19 +111,7 @@ stages:
                 --install --wait --timeout 10m
                 --set clusterName=$(CLUSTER_NAME)
                 --set region=$(AWS_REGION)
-
-          - task: HelmDeploy@0
-            displayName: Install/Upgrade ingress-nginx (NLB)
-            inputs:
-              connectionType: None
-              command: upgrade
-              releaseName: ingress-nginx
-              namespace: ingress-nginx
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              arguments: >
-                --install --wait --timeout 10m
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+                --set vpcId=$(VPC_ID)
 
           - task: HelmDeploy@0
             displayName: Install/Upgrade cert-manager
@@ -155,16 +123,8 @@ stages:
               chartType: Name
               chartName: jetstack/cert-manager
               arguments: >
-                --install --wait --timeout 10m
+                --install --wait --timeout 10m --create-namespace
                 --set installCRDs=true
-
-          # - task: KubernetesManifest@1
-          #   displayName: Apply ClusterIssuer (Route53 DNS-01)
-          #   inputs:
-          #     action: deploy
-          #     connectionType: none
-          #     manifests: |
-          #       $(CLUSTERISSUER_MANIFEST)
 
           - task: HelmDeploy@0
             displayName: Install/Upgrade Argo CD
@@ -175,7 +135,7 @@ stages:
               namespace: argocd
               chartType: Name
               chartName: argo/argo-cd
-              arguments: --install --wait --timeout 10m
+              arguments: --install --wait --timeout 10m --create-namespace
 
           - task: HelmDeploy@0
             displayName: Install/Upgrade Vault
@@ -186,7 +146,7 @@ stages:
               namespace: vault
               chartType: Name
               chartName: hashicorp/vault
-              arguments: --install --wait --timeout 10m
+              arguments: --install --timeout 10m --create-namespace
 
           - task: HelmDeploy@0
             displayName: Install/Upgrade External Secrets Operator
@@ -197,8 +157,23 @@ stages:
               namespace: external-secrets
               chartType: Name
               chartName: external-secrets/external-secrets
-              arguments: --install --wait --timeout 10m
+              arguments: --install --wait --timeout 10m --create-namespace
 
+          # ingress-nginx creates a Service type LoadBalancer -> NLB, so keep it OFF for now.
+          # - task: HelmDeploy@0
+          #   displayName: Install/Upgrade ingress-nginx (NLB)
+          #   inputs:
+          #     connectionType: None
+          #     command: upgrade
+          #     releaseName: ingress-nginx
+          #     namespace: ingress-nginx
+          #     chartType: Name
+          #     chartName: ingress-nginx/ingress-nginx
+          #     arguments: >
+          #       --install --wait --timeout 10m --create-namespace
+          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+
+          # Datadog needs API key -> keep OFF for now
           # - task: HelmDeploy@0
           #   displayName: Install/Upgrade Datadog Agent
           #   inputs:
@@ -208,8 +183,9 @@ stages:
           #     namespace: datadog
           #     chartType: Name
           #     chartName: datadog/datadog
-          #     arguments: --install --wait --timeout 10m
+          #     arguments: --install --wait --timeout 10m --create-namespace
 
+          # App install kept OFF to avoid exposure until ingress is ready
           # - task: HelmDeploy@0
           #   displayName: Install/Upgrade Voting App (local chart)
           #   inputs:
@@ -220,4 +196,4 @@ stages:
           #     chartType: FilePath
           #     chartPath: $(APP_CHART_PATH)
           #     valueFile: $(APP_VALUES_FILE)
-          #     arguments: --install --wait --timeout 10m
+          #     arguments: --install --wait --timeout 10m --create-namespace
