@@ -12,8 +12,25 @@ variable "vpc_cidr" {
 }
 
 variable "azs" { type = list(string) }
-variable "public_subnet_cidrs" { type = list(string) }
+
+variable "public_subnet_cidrs" {
+  type        = list(string)
+  description = "CIDRs for NEW public subnets to create"
+}
+
 variable "private_subnet_cidrs" { type = list(string) }
+
+variable "existing_public_subnet_id" {
+  type        = string
+  description = "ID of existing public subnet (contains Nexus/Agent)"
+  default     = null
+}
+
+variable "existing_igw_id" {
+  type        = string
+  description = "ID of existing Internet Gateway"
+  default     = null
+}
 
 variable "tags" {
   type    = map(string)

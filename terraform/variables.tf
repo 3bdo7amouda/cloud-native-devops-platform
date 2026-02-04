@@ -22,11 +22,24 @@ variable "azs" {
 }
 
 variable "public_subnet_cidrs" {
-  type = list(string)
+  type        = list(string)
+  description = "CIDRs for NEW public subnets to create"
 }
 
 variable "private_subnet_cidrs" {
   type = list(string)
+}
+
+variable "existing_public_subnet_id" {
+  type        = string
+  description = "ID of existing public subnet (172.30.2.0/24 with Nexus/Agent)"
+  default     = null
+}
+
+variable "existing_igw_id" {
+  type        = string
+  description = "ID of existing Internet Gateway"
+  default     = null
 }
 
 variable "tags" {
