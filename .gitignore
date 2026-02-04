@@ -3,46 +3,102 @@
 *.tfstate.*
 *.tfstate.backup
 .terraform/
+.terraform.lock.hcl
 crash.log
 crash.*.log
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-errored.tfstate  # Add this
+errored.tfstate
+*.tfplan
+tfplan
 
-# Sensitive files
+# Terraform variable files (sensitive)
 *.tfvars
-!terraform.tfvars.example  # Allow example file
-!nonprod.tfvars            # If you want to commit env configs
+!terraform.tfvars.example
+!nonprod.tfvars
 !prod.tfvars
 
-# AWS
+# AWS Credentials & Keys
 .aws/
 *.pem
 *.key
+*.ppk
 
-# IDE
+# IDE & Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.classpath
+.settings/
 
-# OS
+# OS Files
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Logs
 *.log
+destroy.log
 
-# Environment
+# Environment Variables
 .env
 .env.local
+.env.*.local
 
 # Helm
 charts/*.tgz
+requirements.lock
 
 # Kubernetes
 kubeconfig
 *.kubeconfig
+kube_config_*
+
+# Docker
+.dockerignore
+
+# Node modules (for voting app)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (for voting app)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# .NET (for worker app)
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+.cache/
+
+# Azure DevOps
+.azure-pipelines/
+
+# Secrets & Sensitive Data
+secrets/
+*.secret
+vault-keys.txt
+unseal-keys.txt
+recovery-keys.txt
