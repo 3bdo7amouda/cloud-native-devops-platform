@@ -95,27 +95,27 @@ stages:
                 --set region=$(AWS_REGION)
                 --set vpcId=$(VPC_ID)
 
-          - task: HelmDeploy@0
-            displayName: Install ingress-nginx
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace --timeout 10m
-                --set controller.service.type=LoadBalancer
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
+          # - task: HelmDeploy@0
+          #   displayName: Install ingress-nginx
+          #   env:
+          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          #     AWS_DEFAULT_REGION: $(AWS_REGION)
+          #   inputs:
+          #     connectionType: None
+          #     namespace: ingress-nginx
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: ingress-nginx/ingress-nginx
+          #     releaseName: ingress-nginx
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >
+          #       --create-namespace --timeout 10m
+          #       --set controller.service.type=LoadBalancer
+          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
 
           - task: HelmDeploy@0
             displayName: Install cert-manager
