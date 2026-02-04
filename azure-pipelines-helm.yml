@@ -11,189 +11,158 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
-  CLUSTERISSUER_MANIFEST: k8s-config/clusterissuer.yaml
-  APP_CHART_PATH: helm-charts
-  APP_VALUES_FILE: helm-charts/values-${{ parameters.env }}.yaml
 
 stages:
-  - stage: PlatformAndApp
-    displayName: Platform Tools + App
+  - stage: DeployPlatform
+    displayName: Deploy Platform Services
     jobs:
-      - job: Deploy
+      - job: Setup
+        displayName: Configure Cluster Access
         pool:
           name: aws-self-hosted
-
         steps:
-          - checkout: self
-
-          - task: AWSShellScript@1
-            displayName: Discover EKS cluster info
+          - task: AWSCLI@1
+            displayName: Configure AWS credentials
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
-                if [ -z "${CLUSTER_NAME}" ] || [ "${CLUSTER_NAME}" = "None" ]; then
-                  echo "No EKS clusters found in $(AWS_REGION)"
-                  exit 1
-                fi
-                VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
-                echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
-                echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
-                echo "Cluster: ${CLUSTER_NAME}"
-                echo "VPC: ${VPC_ID}"
+              awsCommand: eks
+              awsSubCommand: list-clusters
+              awsArguments: --query 'clusters[0]' --output text
+            name: getCluster
+          
+          - task: Bash@3
+            displayName: Export cluster info
+            inputs:
+              targetType: inline
+              script: |
+                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
+                VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
+                echo "##vso[task.setvariable variable=VPC_ID;isOutput=true]$VPC_ID"
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            name: clusterInfo
 
-          - task: AWSShellScript@1
+      - job: DeployTools
+        displayName: Deploy Platform Tools
+        dependsOn: Setup
+        pool:
+          name: aws-self-hosted
+        variables:
+          CLUSTER_NAME: $[ dependencies.Setup.outputs['clusterInfo.CLUSTER_NAME'] ]
+          VPC_ID: $[ dependencies.Setup.outputs['clusterInfo.VPC_ID'] ]
+        steps:
+          - task: KubectlInstaller@0
+            displayName: Install kubectl
+            inputs:
+              kubectlVersion: latest
+
+          - task: AWSCLI@1
             displayName: Configure kubeconfig
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "$(CLUSTER_NAME)"
-                kubectl config current-context
+              awsCommand: eks
+              awsSubCommand: update-kubeconfig
+              awsArguments: --name $(CLUSTER_NAME) --region $(AWS_REGION)
+
+          - task: Bash@3
+            displayName: Add Helm repositories
+            inputs:
+              targetType: inline
+              script: |
+                helm repo add eks https://aws.github.io/eks-charts
+                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+                helm repo add jetstack https://charts.jetstack.io
+                helm repo add argo https://argoproj.github.io/argo-helm
+                helm repo add hashicorp https://helm.releases.hashicorp.com
+                helm repo add external-secrets https://charts.external-secrets.io
+                helm repo update
 
           - task: HelmDeploy@0
-            displayName: Helm repo add (eks)
+            displayName: Install AWS Load Balancer Controller
             inputs:
               connectionType: None
-              command: repo
-              arguments: add eks https://aws.github.io/eks-charts
-
-          - task: HelmDeploy@0
-            displayName: Helm repo add (jetstack)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add jetstack https://charts.jetstack.io
-
-          - task: HelmDeploy@0
-            displayName: Helm repo add (argo)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add argo https://argoproj.github.io/argo-helm
-
-          - task: HelmDeploy@0
-            displayName: Helm repo add (hashicorp)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add hashicorp https://helm.releases.hashicorp.com
-
-          - task: HelmDeploy@0
-            displayName: Helm repo add (external-secrets)
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: add external-secrets https://charts.external-secrets.io
-
-          - task: HelmDeploy@0
-            displayName: Helm repo update
-            inputs:
-              connectionType: None
-              command: repo
-              arguments: update
-
-          - task: HelmDeploy@0
-            displayName: Install/Upgrade AWS Load Balancer Controller
-            inputs:
-              connectionType: None
-              command: upgrade
-              releaseName: aws-load-balancer-controller
               namespace: kube-system
+              command: upgrade
               chartType: Name
               chartName: eks/aws-load-balancer-controller
-              arguments: >
-                --install --wait --timeout 10m
-                --set clusterName=$(CLUSTER_NAME)
-                --set region=$(AWS_REGION)
-                --set vpcId=$(VPC_ID)
+              releaseName: aws-load-balancer-controller
+              overrideValues: clusterName=$(CLUSTER_NAME),region=$(AWS_REGION),vpcId=$(VPC_ID)
+              install: true
+              waitForExecution: true
+              arguments: --timeout 10m
 
           - task: HelmDeploy@0
-            displayName: Install/Upgrade cert-manager
+            displayName: Install ingress-nginx
             inputs:
               connectionType: None
+              namespace: ingress-nginx
               command: upgrade
-              releaseName: cert-manager
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              releaseName: ingress-nginx
+              overrideValues: |
+                controller.service.type=LoadBalancer
+                controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+                controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
+              install: true
+              waitForExecution: true
+              arguments: --create-namespace --timeout 10m
+
+          - task: HelmDeploy@0
+            displayName: Install cert-manager
+            inputs:
+              connectionType: None
               namespace: cert-manager
+              command: upgrade
               chartType: Name
               chartName: jetstack/cert-manager
-              arguments: >
-                --install --wait --timeout 10m --create-namespace
-                --set installCRDs=true
+              releaseName: cert-manager
+              overrideValues: installCRDs=true
+              install: true
+              waitForExecution: true
+              arguments: --create-namespace --timeout 10m
 
           - task: HelmDeploy@0
-            displayName: Install/Upgrade Argo CD
+            displayName: Install Argo CD
             inputs:
               connectionType: None
-              command: upgrade
-              releaseName: argocd
               namespace: argocd
+              command: upgrade
               chartType: Name
               chartName: argo/argo-cd
-              arguments: --install --wait --timeout 10m --create-namespace
+              releaseName: argocd
+              install: true
+              waitForExecution: true
+              arguments: --create-namespace --timeout 10m
 
           - task: HelmDeploy@0
-            displayName: Install/Upgrade Vault
+            displayName: Install Vault
             inputs:
               connectionType: None
-              command: upgrade
-              releaseName: vault
               namespace: vault
+              command: upgrade
               chartType: Name
               chartName: hashicorp/vault
-              arguments: --install --timeout 10m --create-namespace
+              releaseName: vault
+              overrideValues: server.dev.enabled=true,server.dev.devRootToken=root
+              install: true
+              waitForExecution: true
+              arguments: --create-namespace --timeout 10m
 
           - task: HelmDeploy@0
-            displayName: Install/Upgrade External Secrets Operator
+            displayName: Install External Secrets Operator
             inputs:
               connectionType: None
-              command: upgrade
-              releaseName: external-secrets
               namespace: external-secrets
+              command: upgrade
               chartType: Name
               chartName: external-secrets/external-secrets
-              arguments: --install --wait --timeout 10m --create-namespace
-
-          # ingress-nginx creates a Service type LoadBalancer -> NLB, so keep it OFF for now.
-          # - task: HelmDeploy@0
-          #   displayName: Install/Upgrade ingress-nginx (NLB)
-          #   inputs:
-          #     connectionType: None
-          #     command: upgrade
-          #     releaseName: ingress-nginx
-          #     namespace: ingress-nginx
-          #     chartType: Name
-          #     chartName: ingress-nginx/ingress-nginx
-          #     arguments: >
-          #       --install --wait --timeout 10m --create-namespace
-          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-
-          # Datadog needs API key -> keep OFF for now
-          # - task: HelmDeploy@0
-          #   displayName: Install/Upgrade Datadog Agent
-          #   inputs:
-          #     connectionType: None
-          #     command: upgrade
-          #     releaseName: datadog
-          #     namespace: datadog
-          #     chartType: Name
-          #     chartName: datadog/datadog
-          #     arguments: --install --wait --timeout 10m --create-namespace
-
-          # App install kept OFF to avoid exposure until ingress is ready
-          # - task: HelmDeploy@0
-          #   displayName: Install/Upgrade Voting App (local chart)
-          #   inputs:
-          #     connectionType: None
-          #     command: upgrade
-          #     releaseName: voting-app
-          #     namespace: voting-app
-          #     chartType: FilePath
-          #     chartPath: $(APP_CHART_PATH)
-          #     valueFile: $(APP_VALUES_FILE)
-          #     arguments: --install --wait --timeout 10m --create-namespace
+              releaseName: external-secrets
+              install: true
+              waitForExecution: true
+              arguments: --create-namespace --timeout 10m
