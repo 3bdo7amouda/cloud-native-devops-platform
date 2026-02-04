@@ -20,9 +20,12 @@ stages:
         displayName: Deploy Platform Tools
         pool:
           name: aws-self-hosted
+
         steps:
+          - checkout: self
+
           - task: AWSShellScript@1
-            displayName: Setup cluster info
+            displayName: Setup cluster + export AWS creds for Helm tasks
             name: setup
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
@@ -30,19 +33,38 @@ stages:
               scriptType: inline
               inlineScript: |
                 set -euo pipefail
-                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
-                VPC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
-                aws eks update-kubeconfig --region $(AWS_REGION) --name "$CLUSTER_NAME"
-                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
-                echo "##vso[task.setvariable variable=VPC_ID;isOutput=true]$VPC_ID"
-                echo "Cluster: $CLUSTER_NAME"
-                echo "VPC: $VPC_ID"
+
+                CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
+                if [ -z "${CLUSTER_NAME}" ] || [ "${CLUSTER_NAME}" = "None" ]; then
+                  echo "No EKS clusters found in $(AWS_REGION)"
+                  exit 1
+                fi
+
+                VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
+
+                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
+                kubectl config current-context
+
+                echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
+                echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
+                echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
+                echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
+                echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
+
+                echo "Cluster: ${CLUSTER_NAME}"
+                echo "VPC: ${VPC_ID}"
 
           - task: Bash@3
             displayName: Add Helm repositories
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               targetType: inline
               script: |
+                set -euo pipefail
                 helm repo add eks https://aws.github.io/eks-charts
                 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add jetstack https://charts.jetstack.io
@@ -53,6 +75,11 @@ stages:
 
           - task: HelmDeploy@0
             displayName: Install AWS Load Balancer Controller
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: kube-system
@@ -60,13 +87,21 @@ stages:
               chartType: Name
               chartName: eks/aws-load-balancer-controller
               releaseName: aws-load-balancer-controller
-              overrideValues: clusterName=$(setup.CLUSTER_NAME),region=$(AWS_REGION),vpcId=$(setup.VPC_ID)
               install: true
               waitForExecution: true
-              arguments: --timeout 10m
+              arguments: >
+                --timeout 10m
+                --set clusterName=$(CLUSTER_NAME)
+                --set region=$(AWS_REGION)
+                --set vpcId=$(VPC_ID)
 
           - task: HelmDeploy@0
             displayName: Install ingress-nginx
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: ingress-nginx
@@ -74,13 +109,21 @@ stages:
               chartType: Name
               chartName: ingress-nginx/ingress-nginx
               releaseName: ingress-nginx
-              overrideValues: controller.service.type=LoadBalancer,controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb,controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
               install: true
               waitForExecution: true
-              arguments: --create-namespace --timeout 10m
+              arguments: >
+                --create-namespace --timeout 10m
+                --set controller.service.type=LoadBalancer
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
 
           - task: HelmDeploy@0
             displayName: Install cert-manager
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: cert-manager
@@ -88,13 +131,19 @@ stages:
               chartType: Name
               chartName: jetstack/cert-manager
               releaseName: cert-manager
-              overrideValues: installCRDs=true
               install: true
               waitForExecution: true
-              arguments: --create-namespace --timeout 10m
+              arguments: >
+                --create-namespace --timeout 10m
+                --set installCRDs=true
 
           - task: HelmDeploy@0
             displayName: Install Argo CD
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: argocd
@@ -108,6 +157,11 @@ stages:
 
           - task: HelmDeploy@0
             displayName: Install Vault
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: vault
@@ -115,13 +169,17 @@ stages:
               chartType: Name
               chartName: hashicorp/vault
               releaseName: vault
-              overrideValues: server.dev.enabled=true,server.dev.devRootToken=root
               install: true
               waitForExecution: true
               arguments: --create-namespace --timeout 10m
 
           - task: HelmDeploy@0
             displayName: Install External Secrets Operator
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: external-secrets
@@ -132,16 +190,3 @@ stages:
               install: true
               waitForExecution: true
               arguments: --create-namespace --timeout 10m
-
-          - task: Bash@3
-            displayName: Deployment Summary
-            inputs:
-              targetType: inline
-              script: |
-                echo "========================================="
-                echo "PLATFORM DEPLOYMENT COMPLETE"
-                echo "========================================="
-                echo "Cluster: $(setup.CLUSTER_NAME)"
-                NLB_DNS=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                echo "NLB DNS: $NLB_DNS"
-                echo "========================================="
