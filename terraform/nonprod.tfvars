@@ -17,7 +17,7 @@ tags = {
 }
 
 cluster_name    = "nonprod-eks"
-cluster_version = "1.34" 
+cluster_version = "1.35" 
 
 endpoint_public_access  = true
 endpoint_private_access = false
