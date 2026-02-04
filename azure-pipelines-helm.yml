@@ -158,13 +158,13 @@ stages:
                 --install --wait --timeout 10m
                 --set installCRDs=true
 
-          - task: KubernetesManifest@1
-            displayName: Apply ClusterIssuer (Route53 DNS-01)
-            inputs:
-              action: deploy
-              connectionType: none
-              manifests: |
-                $(CLUSTERISSUER_MANIFEST)
+          # - task: KubernetesManifest@1
+          #   displayName: Apply ClusterIssuer (Route53 DNS-01)
+          #   inputs:
+          #     action: deploy
+          #     connectionType: none
+          #     manifests: |
+          #       $(CLUSTERISSUER_MANIFEST)
 
           - task: HelmDeploy@0
             displayName: Install/Upgrade Argo CD

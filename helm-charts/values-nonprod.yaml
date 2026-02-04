@@ -1,4 +1,3 @@
-# Non-Production Environment Overrides
 replicaCount:
   vote: 1
   worker: 1
@@ -7,19 +6,22 @@ replicaCount:
 
 image:
   vote:
-    repository: <YOUR_REGISTRY>/voting-app-vote
-    tag: "nonprod"
+    repository: dockersamples/examplevotingapp_vote
+    tag: "latest"
+    pullPolicy: IfNotPresent
   worker:
-    repository: <YOUR_REGISTRY>/voting-app-worker
-    tag: "nonprod"
+    repository: dockersamples/examplevotingapp_worker
+    tag: "latest"
+    pullPolicy: IfNotPresent
   result:
-    repository: <YOUR_REGISTRY>/voting-app-result
-    tag: "nonprod"
+    repository: dockersamples/examplevotingapp_result
+    tag: "latest"
+    pullPolicy: IfNotPresent
 
 mongodb:
-  secretName: mongodb-atlas-credentials-nonprod
+  secretName: mongodb-atlas-credentials
   secretKey: connection-string
-  databaseName: voting-nonprod
+  databaseName: voting
 
 service:
   vote:
