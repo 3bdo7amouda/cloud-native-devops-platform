@@ -55,11 +55,6 @@ stages:
           CLUSTER_NAME: $[ dependencies.Setup.outputs['clusterInfo.CLUSTER_NAME'] ]
           VPC_ID: $[ dependencies.Setup.outputs['clusterInfo.VPC_ID'] ]
         steps:
-          - task: KubectlInstaller@0
-            displayName: Install kubectl
-            inputs:
-              kubectlVersion: latest
-
           - task: AWSCLI@1
             displayName: Configure kubeconfig
             inputs:
