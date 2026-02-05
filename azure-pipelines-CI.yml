@@ -114,12 +114,12 @@ stages:
           
           - task: trivy@2
             displayName: Scan Vote Image
+            continueOnError: true
             inputs:
               type: 'image'
               target: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/vote:$(IMAGE_TAG)'
               scanners: 'vuln,secret,misconfig'
               severity: 'CRITICAL,HIGH'
-              exitCode: '0'
 
       - job: TrivyResult
         displayName: Trivy Scan - Result Image
@@ -134,12 +134,12 @@ stages:
           
           - task: trivy@2
             displayName: Scan Result Image
+            continueOnError: true
             inputs:
               type: 'image'
               target: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/result:$(IMAGE_TAG)'
               scanners: 'vuln,secret,misconfig'
               severity: 'CRITICAL,HIGH'
-              exitCode: '0'
 
       - job: TrivyWorker
         displayName: Trivy Scan - Worker Image
@@ -154,9 +154,9 @@ stages:
           
           - task: trivy@2
             displayName: Scan Worker Image
+            continueOnError: true
             inputs:
               type: 'image'
               target: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/worker:$(IMAGE_TAG)'
               scanners: 'vuln,secret,misconfig'
               severity: 'CRITICAL,HIGH'
-              exitCode: '0'
