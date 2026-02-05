@@ -78,7 +78,6 @@ stages:
                 helm repo add external-secrets https://charts.external-secrets.io
                 helm repo add datadog https://helm.datadoghq.com
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
-                helm repo add aqua https://aquasecurity.github.io/helm-charts
                 helm repo update
 
           - task: HelmDeploy@0
@@ -264,26 +263,6 @@ stages:
           #       --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-route53"
           #       --set postgresql.enabled=true
           #       --set postgresql.postgresqlPassword=sonarpass
-
-          - task: HelmDeploy@0
-            displayName: Install Trivy Operator
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: trivy-system
-              command: upgrade
-              chartType: Name
-              chartName: aqua/trivy-operator
-              releaseName: trivy-operator
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace --timeout 10m
-                --set trivy.ignoreUnfixed=true
 
           - task: AWSShellScript@1
             displayName: Get NLB Listener ARN
