@@ -26,15 +26,19 @@ stages:
             fetchDepth: 0
             displayName: Checkout Full Repository
             
-          - task: Gitleaks@2
+          - task: Gitleaks@3
             displayName: Scan Entire Repository for Secrets
             inputs:
-              scanlocation: '$(Build.Repository.LocalPath)'
-              configtype: 'default'
+              scanlocation: '$(Build.SourcesDirectory)'
+              configtype: 'predefined'
+              predefinedconfigfile: 'GitleaksUdmCombo.toml'
+              scanmode: 'all'
               reportformat: 'sarif'
               uploadresults: true
+              reportartifactname: 'CodeAnalysisLogs'
               taskfail: true
               verbose: true
+              redact: true
 
   - stage: Build
     displayName: Build and Push Images
