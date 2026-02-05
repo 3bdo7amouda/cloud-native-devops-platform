@@ -11,6 +11,8 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
+  # DATADOG_API_KEY: $(DATADOG_API_KEY) # Set this in pipeline variables
+  # DATADOG_APP_KEY: $(DATADOG_APP_KEY) # Set this in pipeline variables
 
 stages:
   - stage: DeployPlatform
@@ -71,6 +73,9 @@ stages:
                 helm repo add argo https://argoproj.github.io/argo-helm
                 helm repo add hashicorp https://helm.releases.hashicorp.com
                 helm repo add external-secrets https://charts.external-secrets.io
+                helm repo add datadog https://helm.datadoghq.com
+                helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+                helm repo add aqua https://aquasecurity.github.io/helm-charts
                 helm repo update
 
           - task: HelmDeploy@0
@@ -95,28 +100,6 @@ stages:
                 --set region=$(AWS_REGION)
                 --set vpcId=$(VPC_ID)
 
-          # - task: HelmDeploy@0
-          #   displayName: Install ingress-nginx
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     connectionType: None
-          #     namespace: ingress-nginx
-          #     command: upgrade
-          #     chartType: Name
-          #     chartName: ingress-nginx/ingress-nginx
-          #     releaseName: ingress-nginx
-          #     install: true
-          #     waitForExecution: true
-          #     arguments: >
-          #       --create-namespace --timeout 10m
-          #       --set controller.service.type=LoadBalancer
-          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-          #       --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internet-facing
-
           - task: HelmDeploy@0
             displayName: Install cert-manager
             env:
@@ -137,6 +120,48 @@ stages:
                 --create-namespace --timeout 10m
                 --set installCRDs=true
 
+          - task: Bash@3
+            displayName: Apply ClusterIssuer
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                echo "Waiting for cert-manager to be ready..."
+                kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+                kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+                echo "Applying ClusterIssuer..."
+                kubectl apply -f k8s-config/clusterissuer.yaml
+
+          - task: HelmDeploy@0
+            displayName: Install NGINX Ingress Controller with NLB
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: ingress-nginx
+              command: upgrade
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              releaseName: ingress-nginx
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace --timeout 10m
+                --set controller.service.type=LoadBalancer
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"="nlb"
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"="true"
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"="tcp"
+                --set controller.publishService.enabled=true
+                --set controller.ingressClassResource.default=true
+
           - task: HelmDeploy@0
             displayName: Install Argo CD
             env:
@@ -153,7 +178,12 @@ stages:
               releaseName: argocd
               install: true
               waitForExecution: true
-              arguments: --create-namespace --timeout 10m
+              arguments: >
+                --create-namespace --timeout 10m
+                --set server.service.type=ClusterIP
+                --set server.ingress.enabled=true
+                --set server.ingress.ingressClassName=nginx
+                --set server.ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-route53"
 
           - task: HelmDeploy@0
             displayName: Install Vault
@@ -171,7 +201,12 @@ stages:
               releaseName: vault
               install: true
               waitForExecution: true
-              arguments: --create-namespace --timeout 10m
+              arguments: >
+                --create-namespace --timeout 10m
+                --set server.ha.enabled=true
+                --set server.ha.replicas=3
+                --set ui.enabled=true
+                --set ui.serviceType=ClusterIP
 
           - task: HelmDeploy@0
             displayName: Install External Secrets Operator
@@ -189,4 +224,101 @@ stages:
               releaseName: external-secrets
               install: true
               waitForExecution: true
-              arguments: --create-namespace --timeout 10m
+              arguments: >
+                --create-namespace --timeout 10m
+                --set installCRDs=true
+
+          - task: HelmDeploy@0
+            displayName: Install Datadog Agent
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: datadog
+              command: upgrade
+              chartType: Name
+              chartName: datadog/datadog
+              releaseName: datadog
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace --timeout 10m
+                --set datadog.apiKey=CHANGEME
+                --set datadog.appKey=CHANGEME
+                --set datadog.clusterName=$(CLUSTER_NAME)
+                --set datadog.logs.enabled=true
+                --set datadog.logs.containerCollectAll=true
+                --set datadog.apm.enabled=true
+                --set datadog.processAgent.enabled=true
+
+          - task: HelmDeploy@0
+            displayName: Install SonarQube (Java 11 compatible)
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: sonarqube
+              command: upgrade
+              chartType: Name
+              chartName: sonarqube/sonarqube
+              releaseName: sonarqube
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace --timeout 15m
+                --version 10.2.0
+                --set image.tag=9.9.0-community
+                --set service.type=ClusterIP
+                --set ingress.enabled=true
+                --set ingress.ingressClassName=nginx
+                --set ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-route53"
+                --set postgresql.enabled=true
+                --set postgresql.postgresqlPassword=sonarpass
+
+          - task: HelmDeploy@0
+            displayName: Install Trivy Operator
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: trivy-system
+              command: upgrade
+              chartType: Name
+              chartName: aqua/trivy-operator
+              releaseName: trivy-operator
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace --timeout 10m
+                --set trivy.ignoreUnfixed=true
+
+          - task: Bash@3
+            displayName: Get NLB DNS and Service URLs
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                echo "Waiting for NGINX Ingress NLB to be provisioned..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
+                
+                echo "Getting NLB DNS name..."
+                NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                echo "NLB DNS: ${NLB_DNS}"
+                echo "##vso[task.setvariable variable=NLB_DNS]${NLB_DNS}"
