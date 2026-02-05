@@ -54,6 +54,11 @@ module "irsa" {
       service_account_name = "ebs-csi-controller-sa"
       policy_arns          = ["arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"]
     }
+    nginx_ingress = {
+      namespace            = "ingress-nginx"
+      service_account_name = "ingress-nginx"
+      policy_arns          = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
+    }
   }
   tags = var.tags
 }
