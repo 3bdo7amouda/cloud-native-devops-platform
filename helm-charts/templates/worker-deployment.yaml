@@ -27,7 +27,7 @@ spec:
             secretKeyRef:
               name: {{ .Values.mongodb.secretName }}
               key: {{ .Values.mongodb.secretKey }}
-        - name: REDIS_HOST
-          value: "{{ include "voting-app.fullname" . }}-redis"
+        - name: DATABASE_NAME
+          value: {{ .Values.mongodb.databaseName }}
         resources:
           {{- toYaml .Values.resources.worker | nindent 10 }}

@@ -30,7 +30,7 @@ spec:
             secretKeyRef:
               name: {{ .Values.mongodb.secretName }}
               key: {{ .Values.mongodb.secretKey }}
-        - name: PORT
-          value: "80"
+        - name: DATABASE_NAME
+          value: {{ .Values.mongodb.databaseName }}
         resources:
           {{- toYaml .Values.resources.result | nindent 10 }}

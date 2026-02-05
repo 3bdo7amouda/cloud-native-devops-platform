@@ -3,10 +3,8 @@ replicaCount:
   vote: 2
   worker: 2
   result: 2
-  redis: 1
 
-# Image registry: use ACR for Azure (e.g. myacr.azurecr.io) or ECR for AWS
-# Pipeline can override via: --set image.vote.repository=..., image.vote.tag=...
+# Image registry configuration
 image:
   vote:
     repository: 172.30.2.117:5000/voting-app/vote
@@ -20,31 +18,22 @@ image:
     repository: 172.30.2.117:5000/voting-app/result
     tag: "latest"
     pullPolicy: Always
-  redis:
-    repository: redis
-    tag: "7-alpine"
-    pullPolicy: IfNotPresent
 
 # MongoDB Atlas Configuration
 mongodb:
-  # Secret name containing MongoDB connection string
   secretName: mongodb-atlas-credentials
-  # Key in the secret
   secretKey: connection-string
   databaseName: voting
 
 service:
   vote:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
     targetPort: 80
   result:
-    type: LoadBalancer
+    type: ClusterIP
     port: 80
     targetPort: 80
-  redis:
-    type: ClusterIP
-    port: 6379
 
 resources:
   vote:
@@ -68,31 +57,23 @@ resources:
     limits:
       memory: "256Mi"
       cpu: "200m"
-  redis:
-    requests:
-      memory: "128Mi"
-      cpu: "100m"
-    limits:
-      memory: "256Mi"
-      cpu: "200m"
 
-# Ingress configuration (optional) - HTTP only; TLS at API Gateway
+# Ingress configuration (using NLB + API Gateway)
 ingress:
-  enabled: false
+  enabled: true
   className: nginx
   hosts:
-    - host: vote.example.com
+    - host: vote.yourdomain.com
       paths:
         - path: /
           pathType: Prefix
           service: vote
-    - host: result.example.com
+    - host: result.yourdomain.com
       paths:
         - path: /
           pathType: Prefix
           service: result
 
-# Node affinity and tolerations
 affinity: {}
 tolerations: []
 nodeSelector: {}

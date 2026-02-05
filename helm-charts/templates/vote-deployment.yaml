@@ -24,10 +24,5 @@ spec:
         ports:
         - containerPort: 80
           name: http
-        env:
-        - name: REDIS_HOST
-          value: "{{ include "voting-app.fullname" . }}-redis"
-        - name: REDIS_PORT
-          value: "6379"
         resources:
           {{- toYaml .Values.resources.vote | nindent 10 }}
