@@ -18,21 +18,28 @@ stages:
     displayName: Security Scanning
     jobs:
       - job: Gitleaks
-        displayName: Gitleaks Secret Scan
+        displayName: Gitleaks Secret Scan - Full Repository
         pool:
           name: aws-self-hosted
         steps:
+          - checkout: self
+            fetchDepth: 0
+            displayName: Checkout Full Repository
+            
           - task: Gitleaks@2
-            displayName: Scan for Secrets
+            displayName: Scan Entire Repository for Secrets
             inputs:
-              scanlocation: '$(Build.SourcesDirectory)'
+              scanlocation: '$(Build.Repository.LocalPath)'
               configtype: 'default'
               reportformat: 'sarif'
               uploadresults: true
               taskfail: true
-              
+              verbose: true
+
   - stage: Build
     displayName: Build and Push Images
+    dependsOn: SecurityScan
+    condition: succeeded()
     jobs:
       - job: BuildVote
         displayName: Build Vote Service
