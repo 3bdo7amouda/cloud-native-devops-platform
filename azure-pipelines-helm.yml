@@ -36,6 +36,8 @@ stages:
               inlineScript: |
                 set -euo pipefail
 
+                AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+
                 CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
                 if [ -z "${CLUSTER_NAME}" ] || [ "${CLUSTER_NAME}" = "None" ]; then
                   echo "No EKS clusters found in $(AWS_REGION)"
@@ -47,12 +49,14 @@ stages:
                 aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
                 kubectl config current-context
 
+                echo "##vso[task.setvariable variable=AWS_ACCOUNT_ID]${AWS_ACCOUNT_ID}"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
                 echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
                 echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
                 echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
                 echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
 
+                echo "Account ID: ${AWS_ACCOUNT_ID}"
                 echo "Cluster: ${CLUSTER_NAME}"
                 echo "VPC: ${VPC_ID}"
 
