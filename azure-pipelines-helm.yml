@@ -67,7 +67,6 @@ stages:
               targetType: inline
               script: |
                 set -euo pipefail
-                helm repo add eks https://aws.github.io/eks-charts
                 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add jetstack https://charts.jetstack.io
                 helm repo add argo https://argoproj.github.io/argo-helm
@@ -77,28 +76,6 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo add aqua https://aquasecurity.github.io/helm-charts
                 helm repo update
-
-          - task: HelmDeploy@0
-            displayName: Install AWS Load Balancer Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: kube-system
-              command: upgrade
-              chartType: Name
-              chartName: eks/aws-load-balancer-controller
-              releaseName: aws-load-balancer-controller
-              install: true
-              waitForExecution: true
-              arguments: >
-                --timeout 10m
-                --set clusterName=$(CLUSTER_NAME)
-                --set region=$(AWS_REGION)
-                --set vpcId=$(VPC_ID)
 
           - task: HelmDeploy@0
             displayName: Install cert-manager
