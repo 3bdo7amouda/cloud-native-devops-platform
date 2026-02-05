@@ -7,14 +7,17 @@ replicaCount:
 
 image:
   vote:
-    repository: <YOUR_REGISTRY>/voting-app-vote
-    tag: "v1.0.0"
+    repository: 172.30.2.117:5000/voting-app/vote
+    tag: "latest"
+    pullPolicy: Always
   worker:
-    repository: <YOUR_REGISTRY>/voting-app-worker
-    tag: "v1.0.0"
+    repository: 172.30.2.117:5000/voting-app/worker
+    tag: "latest"
+    pullPolicy: Always
   result:
-    repository: <YOUR_REGISTRY>/voting-app-result
-    tag: "v1.0.0"
+    repository: 172.30.2.117:5000/voting-app/result
+    tag: "latest"
+    pullPolicy: Always
 
 mongodb:
   secretName: mongodb-atlas-credentials-prod

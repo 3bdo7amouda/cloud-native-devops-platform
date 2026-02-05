@@ -9,15 +9,15 @@ replicaCount:
 # Pipeline can override via: --set image.vote.repository=..., image.vote.tag=...
 image:
   vote:
-    repository: <YOUR_REGISTRY>/voting-app-vote
+    repository: 172.30.2.117:5000/voting-app/vote
     tag: "latest"
     pullPolicy: Always
   worker:
-    repository: <YOUR_REGISTRY>/voting-app-worker
+    repository: 172.30.2.117:5000/voting-app/worker
     tag: "latest"
     pullPolicy: Always
   result:
-    repository: <YOUR_REGISTRY>/voting-app-result
+    repository: 172.30.2.117:5000/voting-app/result
     tag: "latest"
     pullPolicy: Always
   redis:

@@ -6,17 +6,17 @@ replicaCount:
 
 image:
   vote:
-    repository: dockersamples/examplevotingapp_vote
+    repository: 172.30.2.117:5000/voting-app/vote
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   worker:
-    repository: dockersamples/examplevotingapp_worker
+    repository: 172.30.2.117:5000/voting-app/worker
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   result:
-    repository: dockersamples/examplevotingapp_result
+    repository: 172.30.2.117:5000/voting-app/result
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
 
 mongodb:
   secretName: mongodb-atlas-credentials
