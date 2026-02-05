@@ -95,3 +95,50 @@ stages:
               tags: |
                 $(IMAGE_TAG)
                 latest
+
+  - stage: ImageScan
+    displayName: Container Image Security Scan
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: TrivyVote
+        displayName: Trivy Scan - Vote Image
+        pool:
+          name: aws-self-hosted
+        steps:
+          - task: trivy@2
+            displayName: Scan Vote Image
+            inputs:
+              type: 'image'
+              image: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/vote:$(IMAGE_TAG)'
+              scanners: 'vuln,secret,misconfig'
+              severity: 'CRITICAL,HIGH'
+              exitCode: '1'
+
+      - job: TrivyResult
+        displayName: Trivy Scan - Result Image
+        pool:
+          name: aws-self-hosted
+        steps:
+          - task: trivy@2
+            displayName: Scan Result Image
+            inputs:
+              type: 'image'
+              image: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/result:$(IMAGE_TAG)'
+              scanners: 'vuln,secret,misconfig'
+              severity: 'CRITICAL,HIGH'
+              exitCode: '1'
+
+      - job: TrivyWorker
+        displayName: Trivy Scan - Worker Image
+        pool:
+          name: aws-self-hosted
+        steps:
+          - task: trivy@2
+            displayName: Scan Worker Image
+            inputs:
+              type: 'image'
+              image: '$(NEXUS_REGISTRY)/$(NEXUS_REPO)/worker:$(IMAGE_TAG)'
+              scanners: 'vuln,secret,misconfig'
+              severity: 'CRITICAL,HIGH'
+              exitCode: '1'
