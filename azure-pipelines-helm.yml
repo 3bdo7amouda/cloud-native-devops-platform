@@ -285,24 +285,16 @@ stages:
                 --create-namespace --timeout 10m
                 --set trivy.ignoreUnfixed=true
 
-          - task: Bash@3
-            displayName: Get NLB DNS and Service URLs
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
+          - task: AWSShellScript@1
+            displayName: Get NLB Listener ARN
             inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "Waiting for NGINX Ingress NLB to be provisioned..."
-                kubectl wait --namespace ingress-nginx \
-                  --for=condition=ready pod \
-                  --selector=app.kubernetes.io/component=controller \
-                  --timeout=300s
-                
-                echo "Getting NLB DNS name..."
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
                 NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                echo "NLB DNS: ${NLB_DNS}"
-                echo "##vso[task.setvariable variable=NLB_DNS]${NLB_DNS}"
+                NLB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
+                LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "${NLB_ARN}" --query 'Listeners[0].ListenerArn' --output text)
+                
+                echo "Copy this to nonprod.tfvars:"
+                echo "api_integration_uri = \"${LISTENER_ARN}\""
