@@ -9,11 +9,28 @@ trigger:
 pr: none
 
 variables:
-  NEXUS_REGISTRY: 34.195.126.205:5000
+  NEXUS_REGISTRY: 172.30.2.117:5000
   NEXUS_REPO: voting-app
   IMAGE_TAG: $(Build.BuildId)
 
 stages:
+  - stage: SecurityScan
+    displayName: Security Scanning
+    jobs:
+      - job: Gitleaks
+        displayName: Gitleaks Secret Scan
+        pool:
+          name: aws-self-hosted
+        steps:
+          - task: Gitleaks@2
+            displayName: Scan for Secrets
+            inputs:
+              scanlocation: '$(Build.SourcesDirectory)'
+              configtype: 'default'
+              reportformat: 'sarif'
+              uploadresults: true
+              taskfail: true
+              
   - stage: Build
     displayName: Build and Push Images
     jobs:
