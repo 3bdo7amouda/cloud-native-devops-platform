@@ -106,6 +106,12 @@ stages:
         pool:
           name: aws-self-hosted
         steps:
+          - task: Docker@2
+            displayName: Login to Nexus
+            inputs:
+              command: login
+              containerRegistry: nexus
+          
           - task: trivy@2
             displayName: Scan Vote Image
             inputs:
@@ -120,6 +126,12 @@ stages:
         pool:
           name: aws-self-hosted
         steps:
+          - task: Docker@2
+            displayName: Login to Nexus
+            inputs:
+              command: login
+              containerRegistry: nexus
+          
           - task: trivy@2
             displayName: Scan Result Image
             inputs:
@@ -134,6 +146,12 @@ stages:
         pool:
           name: aws-self-hosted
         steps:
+          - task: Docker@2
+            displayName: Login to Nexus
+            inputs:
+              command: login
+              containerRegistry: nexus
+          
           - task: trivy@2
             displayName: Scan Worker Image
             inputs:
