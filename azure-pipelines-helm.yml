@@ -212,31 +212,31 @@ stages:
                 --create-namespace --timeout 10m
                 --set installCRDs=true
 
-          - task: HelmDeploy@0
-            displayName: Install Datadog Agent
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: datadog
-              command: upgrade
-              chartType: Name
-              chartName: datadog/datadog
-              releaseName: datadog
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace --timeout 10m
-                --set datadog.apiKey=CHANGEME
-                --set datadog.appKey=CHANGEME
-                --set datadog.clusterName=$(CLUSTER_NAME)
-                --set datadog.logs.enabled=true
-                --set datadog.logs.containerCollectAll=true
-                --set datadog.apm.enabled=true
-                --set datadog.processAgent.enabled=true
+          # - task: HelmDeploy@0
+          #   displayName: Install Datadog Agent
+          #   env:
+          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          #     AWS_DEFAULT_REGION: $(AWS_REGION)
+          #   inputs:
+          #     connectionType: None
+          #     namespace: datadog
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: datadog/datadog
+          #     releaseName: datadog
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >
+          #       --create-namespace --timeout 10m
+          #       --set datadog.apiKey=CHANGEME
+          #       --set datadog.appKey=CHANGEME
+          #       --set datadog.clusterName=$(CLUSTER_NAME)
+          #       --set datadog.logs.enabled=true
+          #       --set datadog.logs.containerCollectAll=true
+          #       --set datadog.apm.enabled=true
+          #       --set datadog.processAgent.enabled=true
 
           - task: HelmDeploy@0
             displayName: Install SonarQube (Java 11 compatible)
@@ -285,24 +285,24 @@ stages:
                 --create-namespace --timeout 10m
                 --set trivy.ignoreUnfixed=true
 
-          # - task: Bash@3
-          #   displayName: Get NLB DNS and Service URLs
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     targetType: inline
-          #     script: |
-          #       set -euo pipefail
-          #       echo "Waiting for NGINX Ingress NLB to be provisioned..."
-          #       kubectl wait --namespace ingress-nginx \
-          #         --for=condition=ready pod \
-          #         --selector=app.kubernetes.io/component=controller \
-          #         --timeout=300s
+          - task: Bash@3
+            displayName: Get NLB DNS and Service URLs
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                echo "Waiting for NGINX Ingress NLB to be provisioned..."
+                kubectl wait --namespace ingress-nginx \
+                  --for=condition=ready pod \
+                  --selector=app.kubernetes.io/component=controller \
+                  --timeout=300s
                 
-          #       echo "Getting NLB DNS name..."
-          #       NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-          #       echo "NLB DNS: ${NLB_DNS}"
-          #       echo "##vso[task.setvariable variable=NLB_DNS]${NLB_DNS}"
+                echo "Getting NLB DNS name..."
+                NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                echo "NLB DNS: ${NLB_DNS}"
+                echo "##vso[task.setvariable variable=NLB_DNS]${NLB_DNS}"

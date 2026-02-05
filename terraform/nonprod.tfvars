@@ -36,6 +36,6 @@ attach_ssm = true
 enable_api_gateway = true
 enable_cognito     = true
 
-api_integration_uri = null
+api_integration_uri = "http://a1234567890abcdef-1234567890.elb.us-east-1.amazonaws.com"
 
 hosted_zone_id = "Z05131842BXT9H3SPUW3F"
