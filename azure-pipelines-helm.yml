@@ -121,7 +121,30 @@ stages:
                 kubectl apply -f k8s-config/clusterissuer.yaml
 
           - task: HelmDeploy@0
-            displayName: Install NGINX Ingress Controller with NLB
+            displayName: Install cert-manager
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: cert-manager
+              command: upgrade
+              chartType: FilePath
+              chartPath: oci://quay.io/jetstack/charts/cert-manager
+              chartVersion: v1.19.2
+              releaseName: cert-manager
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set crds.enabled=true
+                --set crds.keep=true
+
+          - task: HelmDeploy@0
+            displayName: Install NGINX Ingress Controller
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -137,16 +160,14 @@ stages:
               install: true
               waitForExecution: true
               arguments: >
-                --create-namespace --timeout 10m
+                --create-namespace
+                --timeout 10m
                 --set controller.service.type=LoadBalancer
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"="nlb"
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"="true"
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"="tcp"
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=tcp
                 --set controller.publishService.enabled=true
                 --set controller.ingressClassResource.default=true
-                --set controller.serviceAccount.create=true
-                --set controller.serviceAccount.name=ingress-nginx
-                --set controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-nginx_ingress-irsa"
 
           - task: HelmDeploy@0
             displayName: Install Argo CD
@@ -165,11 +186,11 @@ stages:
               install: true
               waitForExecution: true
               arguments: >
-                --create-namespace --timeout 10m
+                --create-namespace
+                --timeout 10m
                 --set server.service.type=ClusterIP
                 --set server.ingress.enabled=true
                 --set server.ingress.ingressClassName=nginx
-                --set server.ingress.annotations."cert-manager\.io/cluster-issuer"="letsencrypt-route53"
 
           - task: HelmDeploy@0
             displayName: Install Vault
@@ -188,7 +209,8 @@ stages:
               install: true
               waitForExecution: true
               arguments: >
-                --create-namespace --timeout 10m
+                --create-namespace
+                --timeout 10m
                 --set server.ha.enabled=true
                 --set server.ha.replicas=3
                 --set ui.enabled=true
@@ -211,8 +233,11 @@ stages:
               install: true
               waitForExecution: true
               arguments: >
-                --create-namespace --timeout 10m
-                --set installCRDs=true
+                --create-namespace
+                --timeout 10m
+                --set crds.createClusterExternalSecret=true
+                --set crds.createClusterSecretStore=true
+                --set crds.createPushSecret=true
 
           # - task: HelmDeploy@0
           #   displayName: Install Datadog Agent
