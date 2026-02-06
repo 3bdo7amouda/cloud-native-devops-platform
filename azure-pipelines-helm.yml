@@ -240,6 +240,7 @@ stages:
                 --create-namespace
                 --timeout 15m
                 --set monitoringPasscode=changeMe
+                --set community.enabled=true
                 --set service.type=ClusterIP
                 --set ingress.enabled=true
                 --set ingress.ingressClassName=nginx
