@@ -39,3 +39,16 @@ enable_cognito     = true
 api_integration_uri = "arn:aws:elasticloadbalancing:us-east-1:430118836758:listener/net/aea28d69768af454f8ef2dd15b97cba7/b34aba1f9e571e03/31026050fadf334b"
 
 hosted_zone_id = "Z05131842BXT9H3SPUW3F"
+cluster_access_entries = {
+  admin_user = {
+    principal_arn = "arn:aws:iam::430118836758:user/abdo-cli"
+    policy_associations = {
+      admin = {
+        policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+        access_scope = {
+          type = "cluster"
+        }
+      }
+    }
+  }
+}
