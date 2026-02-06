@@ -36,6 +36,6 @@ attach_ssm = true
 enable_api_gateway = true
 enable_cognito     = true
 
-api_integration_uri = "arn:aws:elasticloadbalancing:us-east-1:430118836758:listener/net/aea28d69768af454f8ef2dd15b97cba7/b34aba1f9e571e03/31026050fadf334b"
+api_integration_uri = null
 
 hosted_zone_id = "Z05131842BXT9H3SPUW3F"
