@@ -49,7 +49,9 @@ stages:
                 VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
 
                 aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
-                kubectl config current-context
+                
+                kubectl cluster-info
+                kubectl get nodes || echo "Warning: Could not get nodes yet"
 
                 echo "##vso[task.setvariable variable=AWS_ACCOUNT_ID]${AWS_ACCOUNT_ID}"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
