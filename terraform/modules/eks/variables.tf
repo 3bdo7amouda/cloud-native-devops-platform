@@ -67,3 +67,17 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "cluster_access_entries" {
+  description = "Map of access entries to add to the cluster"
+  type = map(object({
+    principal_arn = string
+    policy_associations = map(object({
+      policy_arn = string
+      access_scope = object({
+        type = string
+      })
+    }))
+  }))
+  default = {}
+}

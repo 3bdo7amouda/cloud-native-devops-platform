@@ -41,6 +41,7 @@ module "eks" {
   node_max                  = var.node_max
   instance_types            = var.instance_types
   capacity_type             = var.capacity_type
+  cluster_access_entries    = var.cluster_access_entries
   tags                      = var.tags
 }
 
