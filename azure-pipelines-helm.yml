@@ -82,6 +82,142 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
+          # - task: HelmDeploy@1
+          #   displayName: Install cert-manager
+          #   env:
+          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          #     AWS_DEFAULT_REGION: $(AWS_REGION)
+          #   inputs:
+          #     connectionType: None
+          #     namespace: cert-manager
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: jetstack/cert-manager
+          #     chartVersion: v1.19.2
+          #     releaseName: cert-manager
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >
+          #       --create-namespace
+          #       --timeout 10m
+          #       --set crds.enabled=true
+          #       --set crds.keep=true
+
+          # - task: Bash@3
+          #   displayName: Apply ClusterIssuer
+          #   env:
+          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          #     AWS_DEFAULT_REGION: $(AWS_REGION)
+          #   inputs:
+          #     targetType: inline
+          #     script: |
+          #       set -euo pipefail
+          #       echo "Waiting for cert-manager to be ready..."
+          #       kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
+          #       kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
+          #       echo "Applying ClusterIssuer..."
+          #       kubectl apply -f k8s-config/clusterissuer.yaml
+
+          - task: HelmDeploy@1
+            displayName: Install NGINX Ingress Controller
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: ingress-nginx
+              command: upgrade
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              releaseName: ingress-nginx
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set controller.service.type=LoadBalancer
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=tcp
+                --set controller.publishService.enabled=true
+                --set controller.ingressClassResource.default=true
+
+          - task: HelmDeploy@1
+            displayName: Install Vault
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: vault
+              command: upgrade
+              chartType: Name
+              chartName: hashicorp/vault
+              releaseName: vault
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set server.ha.enabled=false
+                --set ui.enabled=true
+                --set ui.serviceType=ClusterIP
+
+          - task: HelmDeploy@1
+            displayName: Install External Secrets Operator
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: external-secrets
+              command: upgrade
+              chartType: Name
+              chartName: external-secrets/external-secrets
+              releaseName: external-secrets
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set crds.createClusterExternalSecret=true
+                --set crds.createClusterSecretStore=true
+                --set crds.createPushSecret=true
+
+          - task: HelmDeploy@1
+            displayName: Install Argo CD
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: argocd
+              command: upgrade
+              chartType: Name
+              chartName: argo/argo-cd
+              releaseName: argocd
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set server.service.type=ClusterIP
+                --set server.ingress.enabled=true
+                --set server.ingress.ingressClassName=nginx
+              # --set server.ingress.annotations."cert-manager\.io/cluster-issuer"=letsencrypt-route53
+
           - task: HelmDeploy@1
             displayName: Install SonarQube
             env:
@@ -134,143 +270,6 @@ stages:
           #       --set datadog.logs.containerCollectAll=true
           #       --set datadog.apm.enabled=true
           #       --set datadog.processAgent.enabled=true
-
-          - task: HelmDeploy@1
-            displayName: Install cert-manager
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: cert-manager
-              command: upgrade
-              chartType: Name
-              chartName: jetstack/cert-manager
-              chartVersion: v1.19.2
-              releaseName: cert-manager
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set crds.enabled=true
-                --set crds.keep=true
-
-          - task: Bash@3
-            displayName: Apply ClusterIssuer
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "Waiting for cert-manager to be ready..."
-                kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
-                kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
-                echo "Applying ClusterIssuer..."
-                kubectl apply -f k8s-config/clusterissuer.yaml
-
-          - task: HelmDeploy@1
-            displayName: Install NGINX Ingress Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set controller.service.type=LoadBalancer
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=tcp
-                --set controller.publishService.enabled=true
-                --set controller.ingressClassResource.default=true
-
-          - task: HelmDeploy@1
-            displayName: Install Argo CD
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: argocd
-              command: upgrade
-              chartType: Name
-              chartName: argo/argo-cd
-              releaseName: argocd
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set server.service.type=ClusterIP
-                --set server.ingress.enabled=true
-                --set server.ingress.ingressClassName=nginx
-                --set server.ingress.annotations."cert-manager\.io/cluster-issuer"=letsencrypt-route53
-
-          - task: HelmDeploy@1
-            displayName: Install Vault
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: vault
-              command: upgrade
-              chartType: Name
-              chartName: hashicorp/vault
-              releaseName: vault
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set server.ha.enabled=true
-                --set server.ha.replicas=3
-                --set ui.enabled=true
-                --set ui.serviceType=ClusterIP
-
-          - task: HelmDeploy@1
-            displayName: Install External Secrets Operator
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: external-secrets
-              command: upgrade
-              chartType: Name
-              chartName: external-secrets/external-secrets
-              releaseName: external-secrets
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set crds.createClusterExternalSecret=true
-                --set crds.createClusterSecretStore=true
-                --set crds.createPushSecret=true
 
           - task: AWSShellScript@1
             displayName: Get NLB Listener ARN
