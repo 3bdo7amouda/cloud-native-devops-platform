@@ -20,7 +20,7 @@ cluster_name    = "nonprod-eks"
 cluster_version = "1.35" 
 
 endpoint_public_access  = true
-endpoint_private_access = false
+endpoint_private_access = true
 
 enabled_cluster_log_types = ["api", "audit", "authenticator"]
 log_retention_in_days     = 7
