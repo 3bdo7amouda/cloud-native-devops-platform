@@ -105,7 +105,6 @@ stages:
                 --set image.tag=9.9.0-community
                 --set service.type=ClusterIP
                 --set ingress.enabled=true
-                --set ingress.ingressClassName=nginx
                 --set postgresql.enabled=true
                 --set postgresql.postgresqlPassword=sonarpass
 
