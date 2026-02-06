@@ -231,18 +231,19 @@ stages:
               command: upgrade
               chartType: Name
               chartName: sonarqube/sonarqube
-              chartVersion: 10.2.0
               releaseName: sonarqube
               install: true
               waitForExecution: true
               arguments: >
                 --create-namespace
                 --timeout 15m
-                --set image.tag=9.9.0-community
+                --set monitoringPasscode=changeMe
+                --set edition=community
                 --set service.type=ClusterIP
                 --set ingress.enabled=true
+                --set ingress.ingressClassName=nginx
                 --set postgresql.enabled=true
-                --set postgresql.postgresqlPassword=sonarpass
+                --set postgresql.auth.password=sonarpass
 
           # - task: HelmDeploy@1
           #   displayName: Install Datadog Agent
