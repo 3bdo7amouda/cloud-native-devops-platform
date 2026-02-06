@@ -110,6 +110,33 @@ stages:
                 --set postgresql.enabled=true
                 --set postgresql.postgresqlPassword=sonarpass
 
+          # - task: HelmDeploy@1
+          #   displayName: Install Datadog Agent
+          #   env:
+          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          #     AWS_DEFAULT_REGION: $(AWS_REGION)
+          #   inputs:
+          #     connectionType: None
+          #     namespace: datadog
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: datadog/datadog
+          #     releaseName: datadog
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >
+          #       --create-namespace
+          #       --timeout 10m
+          #       --set datadog.apiKey=CHANGEME
+          #       --set datadog.appKey=CHANGEME
+          #       --set datadog.clusterName=$(CLUSTER_NAME)
+          #       --set datadog.logs.enabled=true
+          #       --set datadog.logs.containerCollectAll=true
+          #       --set datadog.apm.enabled=true
+          #       --set datadog.processAgent.enabled=true
+
           - task: HelmDeploy@1
             displayName: Install cert-manager
             env:
@@ -246,33 +273,6 @@ stages:
                 --set crds.createClusterExternalSecret=true
                 --set crds.createClusterSecretStore=true
                 --set crds.createPushSecret=true
-
-          # - task: HelmDeploy@1
-          #   displayName: Install Datadog Agent
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     connectionType: None
-          #     namespace: datadog
-          #     command: upgrade
-          #     chartType: Name
-          #     chartName: datadog/datadog
-          #     releaseName: datadog
-          #     install: true
-          #     waitForExecution: true
-          #     arguments: >
-          #       --create-namespace
-          #       --timeout 10m
-          #       --set datadog.apiKey=CHANGEME
-          #       --set datadog.appKey=CHANGEME
-          #       --set datadog.clusterName=$(CLUSTER_NAME)
-          #       --set datadog.logs.enabled=true
-          #       --set datadog.logs.containerCollectAll=true
-          #       --set datadog.apm.enabled=true
-          #       --set datadog.processAgent.enabled=true
 
           - task: AWSShellScript@1
             displayName: Get NLB Listener ARN
