@@ -15,6 +15,11 @@ resource "aws_eks_cluster" "this" {
     endpoint_private_access = var.endpoint_private_access
   }
 
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   enabled_cluster_log_types = var.enabled_cluster_log_types
 
   depends_on = [aws_cloudwatch_log_group.this]
