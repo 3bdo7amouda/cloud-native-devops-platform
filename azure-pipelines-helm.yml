@@ -106,7 +106,6 @@ stages:
                 --set service.type=ClusterIP
                 --set ingress.enabled=true
                 --set ingress.ingressClassName=nginx
-                --set ingress.annotations."cert-manager\.io/cluster-issuer"=letsencrypt-route53
                 --set postgresql.enabled=true
                 --set postgresql.postgresqlPassword=sonarpass
 
