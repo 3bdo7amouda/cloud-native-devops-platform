@@ -359,13 +359,13 @@ stages:
                 if git diff --staged --quiet; then
                   echo "No changes to commit - tfvars already up to date"
                 else
-                  git commit -m "chore: update api_integration_uri with NLB Listener ARN [skip ci]
+                  git commit -m "chore: update api_integration_uri with NLB Listener ARN 
 
                   - Updated ${{ parameters.env }}.tfvars with NLB Listener ARN
                   - Listener ARN: $(LISTENER_ARN)
                   - Auto-committed by Platform Deployment Pipeline"
                   
-                  echo "✓ Committed changes to Git"
+                  echo "Committed changes to Git"
                 fi
 
           - script: |
