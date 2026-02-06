@@ -4,6 +4,16 @@ resource "aws_cloudwatch_log_group" "this" {
   tags              = var.tags
 }
 
+resource "aws_security_group_rule" "cluster_ingress_agent_subnet" {
+  description       = "Allow Azure DevOps agent subnet to communicate with the cluster API Server"
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  cidr_blocks       = ["172.30.2.0/24"]
+  security_group_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+}
+
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = var.cluster_role_arn
