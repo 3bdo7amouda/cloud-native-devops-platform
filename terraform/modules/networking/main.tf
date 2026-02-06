@@ -186,14 +186,13 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   }
 }
 
-// ...existing code...
-
 resource "aws_apigatewayv2_integration" "this" {
-  count = var.enable_api_gateway ? 1 : 0
-  api_id           = aws_apigatewayv2_api.this[0].id
-  integration_type = "HTTP_PROXY"
+  count = (var.enable_api_gateway && var.api_integration_uri != null) ? 1 : 0
+  
+  api_id             = aws_apigatewayv2_api.this[0].id
+  integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri = var.api_integration_uri
+  integration_uri    = var.api_integration_uri
 
   connection_type = "VPC_LINK"
   connection_id   = aws_apigatewayv2_vpc_link.this[0].id

@@ -1,4 +1,11 @@
-trigger: none
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - terraform/*.tfvars
+
 pr: none
 
 parameters:
@@ -75,3 +82,9 @@ stages:
                 set -euo pipefail
                 cd "$(TF_DIR)"
                 terraform apply -auto-approve -input=false tfplan
+                
+                echo "================================"
+                echo "Terraform Outputs:"
+                echo "================================"
+                terraform output
+                echo "================================"

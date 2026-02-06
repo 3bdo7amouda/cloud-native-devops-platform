@@ -11,6 +11,7 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
+  GIT_SERVICE_CONNECTION: git
   # DATADOG_API_KEY: $(DATADOG_API_KEY) # Set this in pipeline variables
   # DATADOG_APP_KEY: $(DATADOG_APP_KEY) # Set this in pipeline variables
 
@@ -25,6 +26,7 @@ stages:
 
         steps:
           - checkout: self
+            persistCredentials: true
 
           - task: AWSShellScript@1
             displayName: Setup cluster + export AWS creds for Helm tasks
@@ -266,14 +268,99 @@ stages:
 
           - task: AWSShellScript@1
             displayName: Get NLB Listener ARN
+            name: nlb
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
               regionName: $(AWS_REGION)
               scriptType: inline
               inlineScript: |
-                NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                NLB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
-                LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "${NLB_ARN}" --query 'Listeners[0].ListenerArn' --output text)
+                set -euo pipefail
                 
-                echo "Copy this to nonprod.tfvars:"
-                echo "api_integration_uri = \"${LISTENER_ARN}\""
+                echo "Waiting for NLB to be ready..."
+                sleep 60
+                
+                NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                echo "NLB DNS: ${NLB_DNS}"
+                
+                NLB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
+                echo "NLB ARN: ${NLB_ARN}"
+                
+                LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "${NLB_ARN}" --query 'Listeners[?Port==`80`].ListenerArn' --output text)
+                echo "Listener ARN: ${LISTENER_ARN}"
+                
+                echo "##vso[task.setvariable variable=LISTENER_ARN;isOutput=true]${LISTENER_ARN}"
+
+  - stage: UpdateInfraConfig
+    displayName: Update Infrastructure Configuration
+    dependsOn: DeployPlatform
+    variables:
+      LISTENER_ARN: $[ stageDependencies.DeployPlatform.DeployTools.outputs['nlb.LISTENER_ARN'] ]
+    jobs:
+      - job: CommitToGit
+        displayName: Update tfvars and Commit
+        pool:
+          name: aws-self-hosted
+        steps:
+          - checkout: self
+            persistCredentials: true
+
+          - task: Bash@3
+            displayName: Update tfvars with NLB Listener ARN
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                
+                TFVARS_FILE="terraform/${{ parameters.env }}.tfvars"
+                LISTENER_ARN="$(LISTENER_ARN)"
+                
+                echo "Updating ${TFVARS_FILE} with Listener ARN: ${LISTENER_ARN}"
+                
+                # Check if api_integration_uri line exists
+                if grep -q '^api_integration_uri' "${TFVARS_FILE}"; then
+                  # Update existing line
+                  sed -i "s|^api_integration_uri.*|api_integration_uri = \"${LISTENER_ARN}\"|" "${TFVARS_FILE}"
+                else
+                  # Add new line before hosted_zone_id (or at end)
+                  if grep -q '^hosted_zone_id' "${TFVARS_FILE}"; then
+                    sed -i "/^hosted_zone_id/i api_integration_uri = \"${LISTENER_ARN}\"\n" "${TFVARS_FILE}"
+                  else
+                    echo "" >> "${TFVARS_FILE}"
+                    echo "api_integration_uri = \"${LISTENER_ARN}\"" >> "${TFVARS_FILE}"
+                  fi
+                fi
+                
+                echo "Updated ${TFVARS_FILE}"
+                echo "---"
+                grep api_integration_uri "${TFVARS_FILE}"
+                echo "---"
+
+          - task: Bash@3
+            displayName: Configure Git and Commit
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                
+                git config user.name "3bdo7amouda"
+                git config user.email "abdelrahman.hamouda29@gmail.com"
+                
+                git add terraform/${{ parameters.env }}.tfvars
+                
+                # Check if there are changes to commit
+                if git diff --staged --quiet; then
+                  echo "No changes to commit - tfvars already up to date"
+                else
+                  git commit -m "chore: update api_integration_uri with NLB Listener ARN [skip ci]
+
+                  - Updated ${{ parameters.env }}.tfvars with NLB Listener ARN
+                  - Listener ARN: $(LISTENER_ARN)
+                  - Auto-committed by Platform Deployment Pipeline"
+                  
+                  echo "Committed changes to Git"
+                fi
+
+          - script: |
+              git push origin HEAD:$(Build.SourceBranch)
+            displayName: Push changes to repository
+            condition: succeeded()
