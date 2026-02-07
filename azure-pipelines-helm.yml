@@ -104,18 +104,14 @@ stages:
                 --set controller.tolerations[0].operator=Equal
                 --set-string controller.tolerations[0].value=true
                 --set controller.tolerations[0].effect=NoSchedule
-                --set admissionWebhooks.patch.tolerations[0].key=platform
-                --set admissionWebhooks.patch.tolerations[0].operator=Equal
-                --set-string admissionWebhooks.patch.tolerations[0].value=true
-                --set admissionWebhooks.patch.tolerations[0].effect=NoSchedule
-                --set admissionWebhooks.createSecretJob.tolerations[0].key=platform
-                --set admissionWebhooks.createSecretJob.tolerations[0].operator=Equal
-                --set-string admissionWebhooks.createSecretJob.tolerations[0].value=true
-                --set admissionWebhooks.createSecretJob.tolerations[0].effect=NoSchedule
-                --set tolerations[0].key=node-role.kubernetes.io/control-plane 
-                --set tolerations[0].effect=NoSchedule 
-                --set tolerations[1].key=node-role.kubernetes.io/master 
-                --set tolerations[1].effect=NoSchedule
+                --set admissionWebhooks.job.tolerations[0].key=platform
+                --set admissionWebhooks.job.tolerations[0].operator=Equal
+                --set-string admissionWebhooks.job.tolerations[0].value=true
+                --set admissionWebhooks.job.tolerations[0].effect=NoSchedule
+                --set defaultBackend.tolerations[0].key=platform
+                --set defaultBackend.tolerations[0].operator=Equal
+                --set-string defaultBackend.tolerations[0].value=true
+                --set defaultBackend.tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: Bash@3
