@@ -51,3 +51,18 @@ output "hosted_zone_id" {
   description = "Route53 hosted zone ID (passthrough from input)"
   value       = var.hosted_zone_id
 }
+
+output "nlb_arn" {
+  description = "ARN of the Network Load Balancer"
+  value       = module.vpc.nlb_arn
+}
+
+output "nlb_dns_name" {
+  description = "DNS name of the Network Load Balancer"
+  value       = module.vpc.nlb_dns_name
+}
+
+output "nlb_target_group_arn" {
+  description = "ARN of the NLB target group for ingress controller"
+  value       = module.vpc.nlb_target_group_arn
+}

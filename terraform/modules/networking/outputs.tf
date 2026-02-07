@@ -29,3 +29,18 @@ output "cognito_user_pool_id" {
 output "cognito_app_client_id" {
   value = length(aws_cognito_user_pool_client.this) > 0 ? aws_cognito_user_pool_client.this[0].id : null
 }
+
+output "nlb_arn" {
+  description = "ARN of the Network Load Balancer"
+  value       = length(aws_lb.nlb) > 0 ? aws_lb.nlb[0].arn : null
+}
+
+output "nlb_dns_name" {
+  description = "DNS name of the Network Load Balancer"
+  value       = length(aws_lb.nlb) > 0 ? aws_lb.nlb[0].dns_name : null
+}
+
+output "nlb_target_group_arn" {
+  description = "ARN of the NLB target group for ingress controller"
+  value       = length(aws_lb_target_group.nlb) > 0 ? aws_lb_target_group.nlb[0].arn : null
+}

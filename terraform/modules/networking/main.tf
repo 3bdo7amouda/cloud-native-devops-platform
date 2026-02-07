@@ -187,19 +187,19 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
 }
 
 resource "aws_apigatewayv2_integration" "this" {
-  count = (var.enable_api_gateway && var.api_integration_uri != null) ? 1 : 0
+  count = var.enable_api_gateway ? 1 : 0
   
   api_id             = aws_apigatewayv2_api.this[0].id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri    = var.api_integration_uri
+  integration_uri    = "http://${aws_lb.nlb[0].dns_name}"
 
   connection_type = "VPC_LINK"
   connection_id   = aws_apigatewayv2_vpc_link.this[0].id
 }
 
 resource "aws_apigatewayv2_route" "api" {
-  count = (var.enable_api_gateway && var.api_integration_uri != null) ? 1 : 0
+  count = var.enable_api_gateway ? 1 : 0
 
   api_id    = aws_apigatewayv2_api.this[0].id
   route_key = "ANY /api/{proxy+}"
@@ -210,7 +210,7 @@ resource "aws_apigatewayv2_route" "api" {
 }
 
 resource "aws_apigatewayv2_route" "auth" {
-  count = (var.enable_api_gateway && var.api_integration_uri != null) ? 1 : 0
+  count = var.enable_api_gateway ? 1 : 0
 
   api_id    = aws_apigatewayv2_api.this[0].id
   route_key = "ANY /auth/{proxy+}"
@@ -218,4 +218,64 @@ resource "aws_apigatewayv2_route" "auth" {
 
   authorization_type = "NONE"
   authorizer_id      = null
+}
+
+resource "aws_apigatewayv2_route" "default" {
+  count = var.enable_api_gateway ? 1 : 0
+
+  api_id    = aws_apigatewayv2_api.this[0].id
+  route_key = "ANY /{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.this[0].id}"
+
+  authorization_type = "NONE"
+  authorizer_id      = null
+}
+
+resource "aws_lb" "nlb" {
+  count              = var.enable_api_gateway ? 1 : 0
+  name               = "${var.name_prefix}-nlb"
+  internal           = true
+  load_balancer_type = "network"
+  subnets            = [for s in aws_subnet.private : s.id]
+
+  enable_deletion_protection       = false
+  enable_cross_zone_load_balancing = true
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-nlb" })
+}
+
+resource "aws_lb_target_group" "nlb" {
+  count       = var.enable_api_gateway ? 1 : 0
+  name        = "${var.name_prefix}-nlb-tg"
+  port        = 80
+  protocol    = "TCP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    enabled             = true
+    protocol            = "TCP"
+    port                = "traffic-port"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    interval            = 30
+  }
+
+  deregistration_delay = 30
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-nlb-tg" })
+}
+
+resource "aws_lb_listener" "nlb" {
+  count             = var.enable_api_gateway ? 1 : 0
+  load_balancer_arn = aws_lb.nlb[0].arn
+  port              = 80
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.nlb[0].arn
+  }
+
+  tags = var.tags
 }
