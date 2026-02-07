@@ -21,7 +21,6 @@ module "vpc" {
 module "iam" {
   source = "./modules/iam"
   cluster_name = var.cluster_name
-  attach_ssm   = var.attach_ssm
   tags         = var.tags
 }
 

@@ -100,11 +100,6 @@ variable "capacity_type" {
   default = "ON_DEMAND"
 }
 
-variable "attach_ssm" {
-  type    = bool
-  default = true
-}
-
 variable "api_name" {
   type    = string
   default = null
