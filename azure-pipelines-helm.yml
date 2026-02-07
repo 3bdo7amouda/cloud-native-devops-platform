@@ -82,7 +82,7 @@ stages:
                 --set vpcId=$(info.VPC_ID)
                 --set tolerations[0].key=platform
                 --set tolerations[0].operator=Equal
-                --set tolerations[0].value=true
+                --set-string tolerations[0].value=true
                 --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
