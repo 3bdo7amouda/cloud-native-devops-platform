@@ -28,10 +28,7 @@ output "node_group_status" {
   value       = aws_eks_node_group.platform.status
 }
 
-output "fargate_profile_ids" {
-  description = "IDs of the Fargate Profiles"
-  value = {
-    kube_system = aws_eks_fargate_profile.kube_system.id
-    voting_app  = aws_eks_fargate_profile.voting_app.id
-  }
+output "fargate_profile_id" {
+  description = "ID of the voting-app Fargate Profile"
+  value       = aws_eks_fargate_profile.voting_app.id
 }

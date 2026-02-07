@@ -65,7 +65,7 @@ output "node_group_status" {
   value       = module.eks.node_group_status
 }
 
-output "fargate_profile_ids" {
-  description = "IDs of the Fargate Profiles"
-  value       = module.eks.fargate_profile_ids
+output "fargate_profile_id" {
+  description = "ID of the voting-app Fargate Profile"
+  value       = module.eks.fargate_profile_id
 }
