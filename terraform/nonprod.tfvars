@@ -36,7 +36,6 @@ attach_ssm = true
 enable_api_gateway = true
 enable_cognito     = true
 
-api_integration_uri = null
 
 hosted_zone_id = "Z05131842BXT9H3SPUW3F"
 

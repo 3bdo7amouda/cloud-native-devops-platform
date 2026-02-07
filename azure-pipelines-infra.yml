@@ -1,11 +1,4 @@
-trigger:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - terraform/*.tfvars
-
+trigger: none
 pr: none
 
 parameters:
