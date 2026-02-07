@@ -12,7 +12,6 @@ variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
   GIT_SERVICE_CONNECTION: git
-  # VAULT_TOKEN: $(VAULT_TOKEN) # Set this in pipeline variables as a secret
   # DATADOG_API_KEY: $(DATADOG_API_KEY) # Set this in pipeline variables
   # DATADOG_APP_KEY: $(DATADOG_APP_KEY) # Set this in pipeline variables
 
@@ -49,21 +48,19 @@ stages:
 
                 VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
 
-                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
+                NLB_TG_ARN=$(aws elbv2 describe-target-groups \
+                  --query "TargetGroups[?TargetGroupName=='nonprod-nlb-tg'].TargetGroupArn" \
+                  --output text)
                 
-                kubectl cluster-info
-                kubectl get nodes || echo "Warning: Could not get nodes yet"
-
+                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
+              
                 echo "##vso[task.setvariable variable=AWS_ACCOUNT_ID]${AWS_ACCOUNT_ID}"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
                 echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
+                echo "##vso[task.setvariable variable=NLB_TG_ARN]${NLB_TG_ARN}"
                 echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
                 echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
                 echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
-
-                echo "Account ID: ${AWS_ACCOUNT_ID}"
-                echo "Cluster: ${CLUSTER_NAME}"
-                echo "VPC: ${VPC_ID}"
 
           - task: Bash@3
             displayName: Add Helm repositories
@@ -76,6 +73,7 @@ stages:
               targetType: inline
               script: |
                 set -euo pipefail
+                helm repo add eks https://aws.github.io/eks-charts
                 helm repo add jetstack https://charts.jetstack.io
                 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add argo https://argoproj.github.io/argo-helm
@@ -84,46 +82,6 @@ stages:
                 helm repo add datadog https://helm.datadoghq.com
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
-
-          # - task: HelmDeploy@1
-          #   displayName: Install cert-manager
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     connectionType: None
-          #     namespace: cert-manager
-          #     command: upgrade
-          #     chartType: Name
-          #     chartName: jetstack/cert-manager
-          #     chartVersion: v1.19.2
-          #     releaseName: cert-manager
-          #     install: true
-          #     waitForExecution: true
-          #     arguments: >
-          #       --create-namespace
-          #       --timeout 10m
-          #       --set crds.enabled=true
-          #       --set crds.keep=true
-
-          # - task: Bash@3
-          #   displayName: Apply ClusterIssuer
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     targetType: inline
-          #     script: |
-          #       set -euo pipefail
-          #       echo "Waiting for cert-manager to be ready..."
-          #       kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager
-          #       kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager-webhook -n cert-manager
-          #       echo "Applying ClusterIssuer..."
-          #       kubectl apply -f k8s-config/clusterissuer.yaml
 
           - task: HelmDeploy@1
             displayName: Install NGINX Ingress Controller
@@ -144,35 +102,17 @@ stages:
               arguments: >
                 --create-namespace
                 --timeout 10m
+                --set controller.tolerations[0].key=platform
+                --set controller.tolerations[0].operator=Equal
+                --set controller.tolerations[0].value=true
+                --set controller.tolerations[0].effect=NoSchedule
                 --set controller.service.type=LoadBalancer
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-cross-zone-load-balancing-enabled"=true
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-backend-protocol"=tcp
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb-ip
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internal
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-target-group-arn"=$(NLB_TG_ARN)
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-attributes"=load_balancing.cross_zone.enabled=true
                 --set controller.publishService.enabled=true
                 --set controller.ingressClassResource.default=true
-
-          - task: HelmDeploy@1
-            displayName: Install Vault
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: vault
-              command: upgrade
-              chartType: Name
-              chartName: hashicorp/vault
-              releaseName: vault
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set server.ha.enabled=false
-                --set ui.enabled=true
-                --set ui.serviceType=ClusterIP
 
           - task: HelmDeploy@1
             displayName: Install External Secrets Operator
@@ -193,52 +133,14 @@ stages:
               arguments: >
                 --create-namespace
                 --timeout 10m
-                --set crds.createClusterExternalSecret=true
-                --set crds.createClusterSecretStore=true
-                --set crds.createPushSecret=true
-                --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::430118836758:role/nonprod-eks-external_secrets-irsa"
-
-          - task: Bash@3
-            displayName: Apply Vault Token Secret
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-              VAULT_TOKEN: $(VAULT_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "Waiting for External Secrets Operator to be ready..."
-                kubectl wait --for=condition=Available --timeout=300s deployment/external-secrets -n external-secrets || true
-                kubectl wait --for=condition=Available --timeout=300s deployment/external-secrets-webhook -n external-secrets || true
-                
-                echo "Creating Vault token secret with token from pipeline variable..."
-                kubectl create secret generic vault-token \
-                  --from-literal=token="${VAULT_TOKEN}" \
-                  --namespace=external-secrets \
-                  --dry-run=client -o yaml | kubectl apply -f -
-                
-                echo "✓ Vault token secret created/updated successfully"
-
-          - task: Bash@3
-            displayName: Apply Vault SecretStore
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "Applying Vault SecretStore configuration..."
-                kubectl apply -f k8s-config/eso-secretstore.yaml
-                echo "Verifying SecretStore status..."
-                sleep 10
-                kubectl get secretstore -n external-secrets
-                kubectl describe secretstore vault-backend -n external-secrets || true
+                --set tolerations[0].key=platform
+                --set tolerations[0].operator=Equal
+                --set tolerations[0].value=true
+                --set tolerations[0].effect=NoSchedule
+                --set installCRDs=true
+                --set serviceAccount.create=true
+                --set serviceAccount.name=external-secrets
+                --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-external_secrets-irsa
 
           - task: HelmDeploy@1
             displayName: Install Argo CD
@@ -259,10 +161,21 @@ stages:
               arguments: >
                 --create-namespace
                 --timeout 10m
+                --set controller.tolerations[0].key=platform
+                --set controller.tolerations[0].operator=Equal
+                --set controller.tolerations[0].value=true
+                --set controller.tolerations[0].effect=NoSchedule
+                --set server.tolerations[0].key=platform
+                --set server.tolerations[0].operator=Equal
+                --set server.tolerations[0].value=true
+                --set server.tolerations[0].effect=NoSchedule
+                --set repoServer.tolerations[0].key=platform
+                --set repoServer.tolerations[0].operator=Equal
+                --set repoServer.tolerations[0].value=true
+                --set repoServer.tolerations[0].effect=NoSchedule
                 --set server.service.type=ClusterIP
                 --set server.ingress.enabled=true
                 --set server.ingress.ingressClassName=nginx
-              # --set server.ingress.annotations."cert-manager\.io/cluster-issuer"=letsencrypt-route53
 
           - task: HelmDeploy@1
             displayName: Install SonarQube
@@ -283,6 +196,10 @@ stages:
               arguments: >
                 --create-namespace
                 --timeout 15m
+                --set tolerations[0].key=platform
+                --set tolerations[0].operator=Equal
+                --set tolerations[0].value=true
+                --set tolerations[0].effect=NoSchedule
                 --set edition=community
                 --set monitoringPasscode=changeMe
                 --set service.type=ClusterIP
@@ -290,129 +207,3 @@ stages:
                 --set ingress.ingressClassName=nginx
                 --set postgresql.enabled=true
                 --set postgresql.auth.password=sonarpass
-
-          # - task: HelmDeploy@1
-          #   displayName: Install Datadog Agent
-          #   env:
-          #     AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-          #     AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-          #     AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-          #     AWS_DEFAULT_REGION: $(AWS_REGION)
-          #   inputs:
-          #     connectionType: None
-          #     namespace: datadog
-          #     command: upgrade
-          #     chartType: Name
-          #     chartName: datadog/datadog
-          #     releaseName: datadog
-          #     install: true
-          #     waitForExecution: true
-          #     arguments: >
-          #       --create-namespace
-          #       --timeout 10m
-          #       --set datadog.apiKey=CHANGEME
-          #       --set datadog.appKey=CHANGEME
-          #       --set datadog.clusterName=$(CLUSTER_NAME)
-          #       --set datadog.logs.enabled=true
-          #       --set datadog.logs.containerCollectAll=true
-          #       --set datadog.apm.enabled=true
-          #       --set datadog.processAgent.enabled=true
-
-          - task: AWSShellScript@1
-            displayName: Get NLB Listener ARN
-            name: nlb
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                
-                echo "Waiting for NLB to be ready..."
-                sleep 60
-                
-                NLB_DNS=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                echo "NLB DNS: ${NLB_DNS}"
-                
-                NLB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='${NLB_DNS}'].LoadBalancerArn" --output text)
-                echo "NLB ARN: ${NLB_ARN}"
-                
-                LISTENER_ARN=$(aws elbv2 describe-listeners --load-balancer-arn "${NLB_ARN}" --query 'Listeners[?Port==`80`].ListenerArn' --output text)
-                echo "Listener ARN: ${LISTENER_ARN}"
-                
-                echo "##vso[task.setvariable variable=LISTENER_ARN;isOutput=true]${LISTENER_ARN}"
-
-  - stage: UpdateInfraConfig
-    displayName: Update Infrastructure Configuration
-    dependsOn: DeployPlatform
-    variables:
-      LISTENER_ARN: $[ stageDependencies.DeployPlatform.DeployTools.outputs['nlb.LISTENER_ARN'] ]
-    jobs:
-      - job: CommitToGit
-        displayName: Update tfvars and Commit
-        pool:
-          name: aws-self-hosted
-        steps:
-          - checkout: self
-            persistCredentials: true
-
-          - task: Bash@3
-            displayName: Update tfvars with NLB Listener ARN
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                TFVARS_FILE="terraform/${{ parameters.env }}.tfvars"
-                LISTENER_ARN="$(LISTENER_ARN)"
-                
-                echo "Updating ${TFVARS_FILE} with Listener ARN: ${LISTENER_ARN}"
-                
-                # Check if api_integration_uri line exists
-                if grep -q '^api_integration_uri' "${TFVARS_FILE}"; then
-                  # Update existing line
-                  sed -i "s|^api_integration_uri.*|api_integration_uri = \"${LISTENER_ARN}\"|" "${TFVARS_FILE}"
-                else
-                  # Add new line before hosted_zone_id (or at end)
-                  if grep -q '^hosted_zone_id' "${TFVARS_FILE}"; then
-                    sed -i "/^hosted_zone_id/i api_integration_uri = \"${LISTENER_ARN}\"\n" "${TFVARS_FILE}"
-                  else
-                    echo "" >> "${TFVARS_FILE}"
-                    echo "api_integration_uri = \"${LISTENER_ARN}\"" >> "${TFVARS_FILE}"
-                  fi
-                fi
-                
-                echo "✓ Updated ${TFVARS_FILE}"
-                echo "---"
-                grep api_integration_uri "${TFVARS_FILE}"
-                echo "---"
-
-          - task: Bash@3
-            displayName: Configure Git and Commit
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                git config user.name "3bdo7amouda"
-                git config user.email "abdelrahman.hamouda29@gmail.com"
-                
-                git add terraform/${{ parameters.env }}.tfvars
-                
-                # Check if there are changes to commit
-                if git diff --staged --quiet; then
-                  echo "No changes to commit - tfvars already up to date"
-                else
-                  git commit -m "chore: update api_integration_uri with NLB Listener ARN 
-
-                  - Updated ${{ parameters.env }}.tfvars with NLB Listener ARN
-                  - Listener ARN: $(LISTENER_ARN)
-                  - Auto-committed by Platform Deployment Pipeline"
-                  
-                  echo "Committed changes to Git"
-                fi
-
-          - script: |
-              git push origin HEAD:$(Build.SourceBranch)
-            displayName: Push changes to repository
-            condition: succeeded()
