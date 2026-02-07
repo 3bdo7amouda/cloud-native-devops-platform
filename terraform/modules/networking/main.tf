@@ -43,7 +43,6 @@ resource "aws_subnet" "public" {
   lifecycle { create_before_destroy = true }
 }
 
-# Create private subnets for EKS nodes
 resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
   vpc_id            = var.vpc_id
@@ -62,7 +61,6 @@ resource "aws_subnet" "private" {
   lifecycle { create_before_destroy = true }
 }
 
-# Public Route Table (for all public subnets including existing one)
 resource "aws_route_table" "public" {
   vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-rt-public" })
@@ -74,21 +72,18 @@ resource "aws_route" "public_inet" {
   gateway_id             = local.igw_id
 }
 
-# Associate NEW public subnets with public route table
 resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
-# Associate existing public subnet with public route table (fix corrupted routes)
 resource "aws_route_table_association" "existing_public" {
   count          = var.existing_public_subnet_id != null ? 1 : 0
   subnet_id      = data.aws_subnet.existing_public[0].id
   route_table_id = aws_route_table.public.id
 }
 
-# NAT Gateway (for private subnets to reach internet)
 resource "aws_eip" "nat" {
   domain = "vpc"
   tags   = merge(var.tags, { Name = "${var.name_prefix}-nat-eip" })
@@ -96,12 +91,11 @@ resource "aws_eip" "nat" {
 
 resource "aws_nat_gateway" "this" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id  # Place NAT in first NEW public subnet
+  subnet_id     = aws_subnet.public[0].id
   depends_on    = [aws_route_table_association.public]
   tags          = merge(var.tags, { Name = "${var.name_prefix}-nat" })
 }
 
-# Private Route Table (for EKS nodes)
 resource "aws_route_table" "private" {
   vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-rt-private" })

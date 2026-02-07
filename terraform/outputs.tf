@@ -1,15 +1,3 @@
-output "vpc_id" {
-  value = module.vpc.vpc_id
-}
-
-output "public_subnet_ids" {
-  value = module.vpc.public_subnet_ids
-}
-
-output "private_subnet_ids" {
-  value = module.vpc.private_subnet_ids
-}
-
 output "cluster_name" {
   value = module.eks.cluster_name
 }
@@ -65,4 +53,19 @@ output "nlb_dns_name" {
 output "nlb_target_group_arn" {
   description = "ARN of the NLB target group for ingress controller"
   value       = module.vpc.nlb_target_group_arn
+}
+
+output "node_group_id" {
+  description = "ID of the platform node group"
+  value       = module.eks.node_group_id
+}
+
+output "node_group_status" {
+  description = "Status of the platform node group"
+  value       = module.eks.node_group_status
+}
+
+output "fargate_profile_ids" {
+  description = "IDs of the Fargate Profiles"
+  value       = module.eks.fargate_profile_ids
 }

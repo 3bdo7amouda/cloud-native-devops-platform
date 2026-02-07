@@ -27,7 +27,7 @@ resource "aws_eks_cluster" "this" {
 
   access_config {
     authentication_mode                         = "API_AND_CONFIG_MAP"
-    bootstrap_cluster_creator_admin_permissions = true
+    bootstrap_cluster_creator_admin_permissions = false  
   }
 
   enabled_cluster_log_types = var.enabled_cluster_log_types
@@ -36,39 +36,15 @@ resource "aws_eks_cluster" "this" {
   tags       = var.tags
 }
 
-resource "aws_eks_node_group" "this" {
-  cluster_name    = aws_eks_cluster.this.name
-  node_group_name = "${var.cluster_name}-ng"
-  node_role_arn   = var.node_role_arn
-  subnet_ids      = var.private_subnet_ids
+resource "aws_eks_access_entry" "this" {
+  for_each = var.cluster_access_entries
 
-  scaling_config {
-    desired_size = var.node_desired
-    min_size     = var.node_min
-    max_size     = var.node_max
-  }
-
-  instance_types = var.instance_types
-  capacity_type  = var.capacity_type
+  cluster_name  = aws_eks_cluster.this.name
+  principal_arn = each.value.principal_arn
+  type          = "STANDARD"
 
   tags = var.tags
 }
-
-resource "aws_eks_addon" "vpc_cni" {
-  cluster_name  = aws_eks_cluster.this.name
-  addon_name    = "vpc-cni"
-}
-
-resource "aws_eks_addon" "coredns" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "coredns"
-}
-
-resource "aws_eks_addon" "kube_proxy" {
-  cluster_name = aws_eks_cluster.this.name
-  addon_name   = "kube-proxy"
-}
-
 
 resource "aws_eks_access_policy_association" "this" {
   for_each = merge([
@@ -91,4 +67,95 @@ resource "aws_eks_access_policy_association" "this" {
   }
 
   depends_on = [aws_eks_access_entry.this]
+}
+
+resource "aws_eks_node_group" "platform" {
+  cluster_name    = aws_eks_cluster.this.name
+  node_group_name = "${var.cluster_name}-platform-nodes"
+  node_role_arn   = var.node_role_arn
+  subnet_ids      = var.private_subnet_ids
+
+  scaling_config {
+    desired_size = var.node_desired
+    max_size     = var.node_max
+    min_size     = var.node_min
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  instance_types = var.instance_types
+  capacity_type  = var.capacity_type
+
+  labels = {
+    role        = "platform"
+    workload    = "system"
+  }
+
+  taint {
+    key    = "platform"
+    value  = "true"
+    effect = "NO_SCHEDULE"
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.cluster_name}-platform-nodes"
+      Role = "platform-tools"
+    }
+  )
+
+  lifecycle {
+    create_before_destroy = true
+    ignore_changes        = [scaling_config[0].desired_size]
+  }
+
+  depends_on = [aws_eks_cluster.this]
+}
+
+resource "aws_eks_fargate_profile" "voting_app" {
+  cluster_name           = aws_eks_cluster.this.name
+  fargate_profile_name   = "${var.cluster_name}-fargate-voting-app"
+  pod_execution_role_arn = var.fargate_pod_execution_role_arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = "voting-app"
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.cluster_name}-fargate-voting-app"
+      Workload = "application"
+    }
+  )
+
+  depends_on = [aws_eks_cluster.this]
+}
+
+resource "aws_eks_fargate_profile" "kube_system" {
+  cluster_name           = aws_eks_cluster.this.name
+  fargate_profile_name   = "${var.cluster_name}-fargate-kube-system"
+  pod_execution_role_arn = var.fargate_pod_execution_role_arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = "kube-system"
+    labels = {
+      "k8s-app" = "kube-dns"
+    }
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name = "${var.cluster_name}-fargate-kube-system"
+      Workload = "system"
+    }
+  )
+
+  depends_on = [aws_eks_cluster.this]
 }

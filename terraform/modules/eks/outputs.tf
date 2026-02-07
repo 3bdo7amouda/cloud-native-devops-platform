@@ -17,3 +17,21 @@ output "cluster_security_group_id" {
 output "oidc_issuer_url" {
   value = aws_eks_cluster.this.identity[0].oidc[0].issuer
 }
+
+output "node_group_id" {
+  description = "ID of the platform node group"
+  value       = aws_eks_node_group.platform.id
+}
+
+output "node_group_status" {
+  description = "Status of the platform node group"
+  value       = aws_eks_node_group.platform.status
+}
+
+output "fargate_profile_ids" {
+  description = "IDs of the Fargate Profiles"
+  value = {
+    kube_system = aws_eks_fargate_profile.kube_system.id
+    voting_app  = aws_eks_fargate_profile.voting_app.id
+  }
+}

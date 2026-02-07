@@ -14,6 +14,11 @@ variable "node_role_arn" {
   type = string
 }
 
+variable "fargate_pod_execution_role_arn" {
+  description = "ARN of the Fargate Pod Execution Role"
+  type        = string
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }
@@ -39,28 +44,33 @@ variable "log_retention_in_days" {
 }
 
 variable "node_desired" {
-  type    = number
-  default = 2
+  type        = number
+  default     = 2
+  description = "Desired number of platform nodes"
 }
 
 variable "node_min" {
-  type    = number
-  default = 1
+  type        = number
+  default     = 1
+  description = "Minimum number of platform nodes"
 }
 
 variable "node_max" {
-  type    = number
-  default = 3
+  type        = number
+  default     = 3
+  description = "Maximum number of platform nodes"
 }
 
 variable "instance_types" {
-  type    = list(string)
-  default = ["t3.medium"]
+  type        = list(string)
+  default     = ["t3.medium"]
+  description = "Instance types for platform nodes"
 }
 
 variable "capacity_type" {
-  type    = string
-  default = "ON_DEMAND"
+  type        = string
+  default     = "ON_DEMAND"
+  description = "Capacity type for platform nodes (ON_DEMAND or SPOT)"
 }
 
 variable "tags" {
