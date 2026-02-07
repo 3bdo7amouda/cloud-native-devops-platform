@@ -69,6 +69,7 @@ stages:
               targetType: inline
               script: |
                 set -euo pipefail
+                helm repo add eks https://aws.github.io/eks-charts
                 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add argo https://argoproj.github.io/argo-helm
                 helm repo add external-secrets https://charts.external-secrets.io
@@ -101,6 +102,29 @@ stages:
                 echo "Cleanup complete"
 
           - task: HelmDeploy@1
+            displayName: Install AWS Load Balancer Controller
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              connectionType: None
+              namespace: kube-system
+              command: upgrade
+              chartType: Name
+              chartName: eks/aws-load-balancer-controller
+              releaseName: aws-load-balancer-controller
+              install: true
+              waitForExecution: true
+              arguments: >
+                --timeout 10m
+                --set clusterName=$(CLUSTER_NAME)
+                --set serviceAccount.create=false
+                --set serviceAccount.name=aws-load-balancer-controller
+                --set region=$(AWS_REGION)
+
+          - task: HelmDeploy@1
             displayName: Install NGINX Ingress Controller
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
@@ -127,11 +151,44 @@ stages:
                 --set controller.admissionWebhooks.patch.tolerations[0].operator=Equal
                 --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
                 --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
-                --set controller.service.type=LoadBalancer
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb-ip
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internal
-                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-target-group-arn"=$(NLB_TG_ARN)
-                --set controller.publishService.enabled=true
+                --set controller.service.type=NodePort
+                --set controller.publishService.enabled=false
+
+          - task: Bash@3
+            displayName: Create TargetGroupBinding for NLB Integration
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                
+                echo "Creating TargetGroupBinding to connect NLB to ingress-nginx..."
+                
+                cat <<EOF | kubectl apply -f -
+                apiVersion: elbv2.k8s.aws/v1beta1
+                kind: TargetGroupBinding
+                metadata:
+                  name: ingress-nlb-tgb
+                  namespace: ingress-nginx
+                spec:
+                  targetGroupARN: $(NLB_TG_ARN)
+                  targetType: ip
+                  serviceRef:
+                    name: ingress-nginx-controller
+                    port: 80
+                EOF
+                
+                echo "Waiting for TargetGroupBinding to be ready..."
+                sleep 10
+                
+                kubectl get targetgroupbinding ingress-nlb-tgb -n ingress-nginx -o wide
+                kubectl describe targetgroupbinding ingress-nlb-tgb -n ingress-nginx
+                
+                echo "✅ TargetGroupBinding created successfully"
 
           - task: Bash@3
             displayName: Verify NGINX Ingress Controller
@@ -150,7 +207,7 @@ stages:
                   -n ingress-nginx --timeout=300s
                 
                 kubectl get svc ingress-nginx-controller -n ingress-nginx
-                echo "NGINX Ingress Controller deployed successfully"
+                echo "✅ NGINX Ingress Controller deployed successfully"
 
           - task: AWSShellScript@1
             displayName: Verify NLB Target Registration

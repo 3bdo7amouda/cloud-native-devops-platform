@@ -60,6 +60,11 @@ module "irsa" {
       service_account_name = "ingress-nginx"
       policy_arns          = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
     }
+    aws_load_balancer_controller = {
+      namespace            = "kube-system"
+      service_account_name = "aws-load-balancer-controller"
+      policy_arns          = ["arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"]
+    }
   }
   tags = var.tags
 }
