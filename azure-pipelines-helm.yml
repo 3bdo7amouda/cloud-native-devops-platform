@@ -80,6 +80,10 @@ stages:
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
                 --set vpcId=$(info.VPC_ID)
+                --set tolerations[0].key=platform
+                --set tolerations[0].operator=Equal
+                --set tolerations[0].value=true
+                --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: HelmDeploy@1
@@ -100,6 +104,10 @@ stages:
                 --set controller.tolerations[0].operator=Equal
                 --set controller.tolerations[0].value=true
                 --set controller.tolerations[0].effect=NoSchedule
+                --set tolerations[0].key=node-role.kubernetes.io/control-plane 
+                --set tolerations[0].effect=NoSchedule 
+                --set tolerations[1].key=node-role.kubernetes.io/master 
+                --set tolerations[1].effect=NoSchedule
                 --timeout 10m
 
           - task: Bash@3
