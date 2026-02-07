@@ -75,7 +75,7 @@ stages:
               releaseName: aws-load-balancer-controller
               install: true
               waitForExecution: true
-              arguments: |
+              arguments: >-
                 --set clusterName=$(info.CLUSTER_NAME)
                 --set serviceAccount.create=false
                 --set serviceAccount.name=aws-load-balancer-controller
@@ -93,7 +93,7 @@ stages:
               releaseName: ingress-nginx
               install: true
               waitForExecution: true
-              arguments: |
+              arguments: >-
                 --create-namespace
                 --set controller.service.type=ClusterIP
                 --set controller.tolerations[0].key=platform
@@ -121,7 +121,7 @@ stages:
               releaseName: argocd
               install: true
               waitForExecution: true
-              arguments: |
+              arguments: >-
                 --create-namespace
                 --set server.service.type=ClusterIP
                 --set server.tolerations[0].key=platform
