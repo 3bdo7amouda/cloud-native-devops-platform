@@ -88,20 +88,7 @@ stages:
                 --set vpcId=$(VPC_ID)
 
           - task: Bash@3
-            displayName: Create Platform Backend Service
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                kubectl apply -f k8s-config/platform-backend.yaml
-                kubectl wait --for=condition=Available deployment/platform-router -n platform-backend --timeout=300s
-
-          - task: Bash@3
-            displayName: Create TargetGroupBinding
+            displayName: Create TargetGroupBinding for NLB
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -111,11 +98,12 @@ stages:
               script: |
                 set -euo pipefail
                 
-                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
+                # Replace placeholder with actual NLB target group ARN
+                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/platform-ingress.yaml | kubectl apply -f -
                 
                 sleep 10
-                kubectl get targetgroupbinding platform-nlb-tgb -n platform-backend
-    
+                kubectl get targetgroupbinding argocd-nlb-tgb -n argocd
+
           - task: HelmDeploy@1
             displayName: Install External Secrets Operator
             env:

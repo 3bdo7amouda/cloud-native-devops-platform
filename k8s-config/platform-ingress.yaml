@@ -1,11 +1,11 @@
 apiVersion: elbv2.k8s.aws/v1beta1
 kind: TargetGroupBinding
 metadata:
-  name: platform-nlb-tgb
-  namespace: platform-backend
+  name: argocd-nlb-tgb
+  namespace: argocd
 spec:
   targetGroupARN: TARGET_GROUP_ARN_PLACEHOLDER
   targetType: ip
   serviceRef:
-    name: platform-router
+    name: argocd-server
     port: 80
