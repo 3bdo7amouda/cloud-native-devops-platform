@@ -60,6 +60,11 @@ module "irsa" {
       service_account_name = "ingress-nginx"
       policy_arns          = ["arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess"]
     }
+    external_secrets = {
+      namespace            = "external-secrets"
+      service_account_name = "external-secrets"
+      policy_arns          = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+    }
   }
   tags = var.tags
 }

@@ -77,6 +77,10 @@ resource "aws_eks_access_entry" "this" {
   type          = "STANDARD"
 
   tags = var.tags
+  
+  lifecycle {
+    ignore_changes = [principal_arn]
+  }
 }
 
 resource "aws_eks_access_policy_association" "this" {
