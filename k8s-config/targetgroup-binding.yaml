@@ -4,7 +4,7 @@ metadata:
   name: ingress-nlb-tgb
   namespace: ingress-nginx
 spec:
-  targetGroupARN: TG_ARN_PLACEHOLDER
+  targetGroupARN: "TG_ARN_PLACEHOLDER"
   targetType: ip
   serviceRef:
     name: ingress-nginx-controller

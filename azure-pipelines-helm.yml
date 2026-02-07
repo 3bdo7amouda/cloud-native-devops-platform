@@ -121,12 +121,21 @@ stages:
                 kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
 
           - task: Bash@3
-            displayName: Create TargetGroupBinding
+            displayName: Apply TargetGroupBinding (NLB TG -> ingress-nginx svc)
             inputs:
               targetType: inline
               script: |
-                sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" \
-                  k8s-config/targetgroup-binding.yaml | kubectl apply -f -
+                set -euo pipefail
+
+                if [[ -z "$(info.NLB_TG_ARN)" ]]; then
+                  echo "ERROR: info.NLB_TG_ARN is empty"
+                  exit 1
+                fi
+
+                sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
+
+                kubectl -n ingress-nginx get targetgroupbinding ingress-nlb-tgb -o wide
+                kubectl -n ingress-nginx describe targetgroupbinding ingress-nlb-tgb | sed -n '/Events/,$p'
 
           - task: HelmDeploy@1
             displayName: Deploy ArgoCD
