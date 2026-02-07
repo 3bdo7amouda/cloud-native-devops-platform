@@ -87,6 +87,32 @@ stages:
                 --timeout 10m
 
           - task: Bash@3
+            displayName: Pre-clean ingress-nginx stuck/pending Helm release and hook Jobs
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+
+                # If a previous pipeline run was cancelled or failed mid-install, Helm can leave the release in pending-install
+                # and block subsequent upgrades with: "another operation (install/upgrade/rollback) is in progress".
+                status=$(helm -n ingress-nginx status ingress-nginx 2>/dev/null | awk -F': ' '/^STATUS:/{print $2}' || true)
+                if [[ "$status" == pending-install || "$status" == pending-upgrade || "$status" == pending-rollback ]]; then
+                  echo "Found ingress-nginx Helm release in $status; cleaning up lock and leftover resources."
+
+                  # Best-effort uninstall/rollback
+                  helm -n ingress-nginx uninstall ingress-nginx 2>/dev/null || true
+
+                  # Remove Helm release secret that keeps the lock (safe because release is stuck and we are reinstalling)
+                  kubectl -n ingress-nginx delete secret sh.helm.release.v1.ingress-nginx.v1 --ignore-not-found || true
+                fi
+
+                # Always clean up stuck admission hook jobs/pods from old runs
+                kubectl -n ingress-nginx delete job ingress-nginx-admission-create --ignore-not-found || true
+                kubectl -n ingress-nginx delete job ingress-nginx-admission-patch --ignore-not-found || true
+                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-create --ignore-not-found || true
+                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-patch --ignore-not-found || true
+
+          - task: Bash@3
             displayName: Pre-clean ingress-nginx stuck hook Jobs (if any)
             inputs:
               targetType: inline
