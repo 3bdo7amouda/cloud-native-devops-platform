@@ -69,19 +69,6 @@ resource "aws_eks_addon" "kube_proxy" {
   addon_name   = "kube-proxy"
 }
 
-resource "aws_eks_access_entry" "this" {
-  for_each = var.cluster_access_entries
-
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = each.value.principal_arn
-  type          = "STANDARD"
-
-  tags = var.tags
-  
-  lifecycle {
-    ignore_changes = [principal_arn]
-  }
-}
 
 resource "aws_eks_access_policy_association" "this" {
   for_each = merge([
