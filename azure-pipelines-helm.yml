@@ -59,6 +59,7 @@ stages:
               targetType: inline
               script: |
                 helm repo add eks https://aws.github.io/eks-charts
+                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add argo https://argoproj.github.io/argo-helm
                 helm repo add external-secrets https://charts.external-secrets.io
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
@@ -87,6 +88,34 @@ stages:
                 --set region=$(AWS_REGION)
                 --set vpcId=$(VPC_ID)
 
+          - task: HelmDeploy@1
+            displayName: Install NGINX Ingress Controller
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            inputs:
+              connectionType: None
+              namespace: ingress-nginx
+              command: upgrade
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              releaseName: ingress-nginx
+              install: true
+              waitForExecution: true
+              arguments: >
+                --create-namespace
+                --timeout 10m
+                --set controller.tolerations[0].key=platform
+                --set controller.tolerations[0].operator=Equal
+                --set-string controller.tolerations[0].value=true
+                --set controller.tolerations[0].effect=NoSchedule
+                --set controller.admissionWebhooks.patch.tolerations[0].key=platform
+                --set controller.admissionWebhooks.patch.tolerations[0].operator=Equal
+                --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
+                --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
+                --set controller.service.type=ClusterIP
+
           - task: Bash@3
             displayName: Create TargetGroupBinding for NLB
             env:
@@ -98,11 +127,11 @@ stages:
               script: |
                 set -euo pipefail
                 
-                # Replace placeholder with actual NLB target group ARN
-                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/platform-ingress.yaml | kubectl apply -f -
+                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
                 
                 sleep 10
-                kubectl get targetgroupbinding argocd-nlb-tgb -n argocd
+                kubectl get targetgroupbinding ingress-nlb-tgb -n ingress-nginx
+                kubectl describe targetgroupbinding ingress-nlb-tgb -n ingress-nginx
 
           - task: HelmDeploy@1
             displayName: Install External Secrets Operator
@@ -198,3 +227,35 @@ stages:
                 --set postgresql.primary.tolerations[0].operator=Equal
                 --set-string postgresql.primary.tolerations[0].value=true
                 --set postgresql.primary.tolerations[0].effect=NoSchedule
+
+          - task: Bash@3
+            displayName: Apply Platform Ingress Routes
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                kubectl apply -f k8s-config/platform-ingress.yaml
+                
+                sleep 5
+                kubectl get ingress -A
+
+          - task: AWSShellScript@1
+            displayName: Verify NLB Target Registration
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                
+                sleep 20
+                TARGET_HEALTH=$(aws elbv2 describe-target-health --target-group-arn "$(NLB_TG_ARN)")
+                HEALTHY_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy") | .Target.Id' | wc -l)
+                TOTAL_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions | length')
+                
+                echo "Target health: ${HEALTHY_COUNT}/${TOTAL_COUNT} healthy"
+                echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | "\(.Target.Id): \(.TargetHealth.State)"'
