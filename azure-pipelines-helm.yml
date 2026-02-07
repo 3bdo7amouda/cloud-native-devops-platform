@@ -10,51 +10,57 @@ parameters:
 
 variables:
   AWS_REGION: us-east-1
-  AWS_SERVICE_CONNECTION: aws-cred
+  TF_DIR: terraform
 
 stages:
   - stage: DeployPlatform
-    displayName: Deploy Platform Services
+    displayName: Deploy Platform
     jobs:
-      - job: DeployTools
-        displayName: Deploy Platform Tools
+      - job: Deploy
+        displayName: Deploy Controllers & Tools
         pool:
-          name: aws-self-hosted
+          name: Default
 
         steps:
           - checkout: self
 
-          - task: AWSShellScript@1
-            displayName: Setup Cluster
-            name: setup
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-
-                AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-                CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
-                VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
-                NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?TargetGroupName=='nonprod-nlb-tg'].TargetGroupArn" --output text)
-                
-                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
-                
-                echo "##vso[task.setvariable variable=AWS_ACCOUNT_ID]${AWS_ACCOUNT_ID}"
-                echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
-                echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
-                echo "##vso[task.setvariable variable=NLB_TG_ARN]${NLB_TG_ARN}"
-                echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
-                echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
-                echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
-
           - task: Bash@3
-            displayName: Add Helm Repositories
+            displayName: Get Infrastructure Outputs
+            name: outputs
+            inputs:
+              targetType: inline
+              script: |
+                cd $(TF_DIR)
+                terraform init -input=false
+                
+                CLUSTER_NAME=$(terraform output -raw cluster_name)
+                NLB_TG_ARN=$(terraform output -raw nlb_target_group_arn)
+                NLB_DNS=$(terraform output -raw nlb_dns_name)
+                ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                
+                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
+                echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]$NLB_TG_ARN"
+                echo "##vso[task.setvariable variable=NLB_DNS;isOutput=true]$NLB_DNS"
+                echo "##vso[task.setvariable variable=ACCOUNT_ID;isOutput=true]$ACCOUNT_ID"
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+
+          - task: Bash@3
+            displayName: Configure kubectl
+            inputs:
+              targetType: inline
+              script: |
+                aws eks update-kubeconfig --region $(AWS_REGION) --name $(outputs.CLUSTER_NAME)
+                kubectl get nodes
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+
+          - task: Bash@3
+            displayName: Add Helm Repos
             inputs:
               targetType: inline
               script: |
@@ -65,35 +71,23 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
-          - task: Bash@3
-            displayName: Create ServiceAccount for AWS Load Balancer Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          - task: Kubernetes@1
+            displayName: Create AWS LBC ServiceAccount
             inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                cat <<EOF | kubectl apply -f -
+              connectionType: None
+              command: apply
+              useConfigurationFile: true
+              configuration: |
                 apiVersion: v1
                 kind: ServiceAccount
                 metadata:
                   name: aws-load-balancer-controller
                   namespace: kube-system
                   annotations:
-                    eks.amazonaws.com/role-arn: arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-aws_load_balancer_controller-irsa
-                EOF
-                
-                kubectl get sa aws-load-balancer-controller -n kube-system
+                    eks.amazonaws.com/role-arn: arn:aws:iam::$(outputs.ACCOUNT_ID):role/$(outputs.CLUSTER_NAME)-aws_load_balancer_controller-irsa
 
           - task: HelmDeploy@1
-            displayName: Install AWS Load Balancer Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            displayName: Deploy AWS Load Balancer Controller
             inputs:
               connectionType: None
               namespace: kube-system
@@ -102,51 +96,16 @@ stages:
               chartName: eks/aws-load-balancer-controller
               releaseName: aws-load-balancer-controller
               install: true
-              waitForExecution: false
-              arguments: >
-                --timeout 15m
-                --set clusterName=$(CLUSTER_NAME)
+              waitForExecution: true
+              arguments: |
+                --set clusterName=$(outputs.CLUSTER_NAME)
                 --set serviceAccount.create=false
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
-                --set vpcId=$(VPC_ID)
-
-          - task: Bash@3
-            displayName: Wait for AWS Load Balancer Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Waiting for AWS Load Balancer Controller deployment..."
-                kubectl wait --for=condition=Available --timeout=300s \
-                  deployment/aws-load-balancer-controller -n kube-system || {
-                  
-                  echo "ERROR: Deployment did not become ready. Checking status..."
-                  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
-                  kubectl describe deployment aws-load-balancer-controller -n kube-system
-                  
-                  POD=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-                  if [ -n "$POD" ]; then
-                    kubectl logs $POD -n kube-system --tail=50 || true
-                  fi
-                  
-                  exit 1
-                }
-                
-                kubectl get crd targetgroupbindings.elbv2.k8s.aws
-                echo "AWS Load Balancer Controller is ready!"
+                --timeout 15m
 
           - task: HelmDeploy@1
-            displayName: Install NGINX Ingress Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            displayName: Deploy NGINX Ingress
             inputs:
               connectionType: None
               namespace: ingress-nginx
@@ -156,75 +115,40 @@ stages:
               releaseName: ingress-nginx
               install: true
               waitForExecution: true
-              arguments: >
+              arguments: |
                 --create-namespace
-                --timeout 10m
-                --set controller.tolerations[0].key=platform
-                --set controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set controller.tolerations[0].effect=NoSchedule
-                --set controller.admissionWebhooks.patch.tolerations[0].key=platform
-                --set controller.admissionWebhooks.patch.tolerations[0].operator=Equal
-                --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
-                --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
                 --set controller.service.type=ClusterIP
+                --set-string controller.tolerations[0].key=platform
+                --set-string controller.tolerations[0].operator=Equal
+                --set-string controller.tolerations[0].value=true
+                --set-string controller.tolerations[0].effect=NoSchedule
+                --set-string controller.admissionWebhooks.patch.tolerations[0].key=platform
+                --set-string controller.admissionWebhooks.patch.tolerations[0].operator=Equal
+                --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
+                --set-string controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
+                --timeout 10m
 
-          - task: Bash@3
-            displayName: Create TargetGroupBinding for NLB
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
-                
-                sleep 10
-                kubectl get targetgroupbinding ingress-nlb-tgb -n ingress-nginx
-                kubectl describe targetgroupbinding ingress-nlb-tgb -n ingress-nginx
-
-          - task: HelmDeploy@1
-            displayName: Install External Secrets Operator
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+          - task: Kubernetes@1
+            displayName: Create TargetGroupBinding
             inputs:
               connectionType: None
-              namespace: external-secrets
-              command: upgrade
-              chartType: Name
-              chartName: external-secrets/external-secrets
-              releaseName: external-secrets
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
-                --set webhook.tolerations[0].key=platform
-                --set webhook.tolerations[0].operator=Equal
-                --set-string webhook.tolerations[0].value=true
-                --set webhook.tolerations[0].effect=NoSchedule
-                --set certController.tolerations[0].key=platform
-                --set certController.tolerations[0].operator=Equal
-                --set-string certController.tolerations[0].value=true
-                --set certController.tolerations[0].effect=NoSchedule
-                --set installCRDs=true
-                --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-external_secrets-irsa
+              command: apply
+              useConfigurationFile: true
+              configuration: |
+                apiVersion: elbv2.k8s.aws/v1beta1
+                kind: TargetGroupBinding
+                metadata:
+                  name: ingress-nlb-tgb
+                  namespace: ingress-nginx
+                spec:
+                  targetGroupARN: $(outputs.NLB_TG_ARN)
+                  targetType: ip
+                  serviceRef:
+                    name: ingress-nginx-controller
+                    port: 80
 
           - task: HelmDeploy@1
-            displayName: Install Argo CD
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            displayName: Deploy Argo CD
             inputs:
               connectionType: None
               namespace: argocd
@@ -234,32 +158,59 @@ stages:
               releaseName: argocd
               install: true
               waitForExecution: true
-              arguments: >
+              arguments: |
                 --create-namespace
-                --timeout 10m
-                --set controller.tolerations[0].key=platform
-                --set controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set controller.tolerations[0].effect=NoSchedule
-                --set server.tolerations[0].key=platform
-                --set server.tolerations[0].operator=Equal
+                --set server.service.type=ClusterIP
+                --set server.ingress.enabled=false
+                --set-string server.tolerations[0].key=platform
+                --set-string server.tolerations[0].operator=Equal
                 --set-string server.tolerations[0].value=true
-                --set server.tolerations[0].effect=NoSchedule
-                --set repoServer.tolerations[0].key=platform
-                --set repoServer.tolerations[0].operator=Equal
+                --set-string server.tolerations[0].effect=NoSchedule
+                --set-string controller.tolerations[0].key=platform
+                --set-string controller.tolerations[0].operator=Equal
+                --set-string controller.tolerations[0].value=true
+                --set-string controller.tolerations[0].effect=NoSchedule
+                --set-string repoServer.tolerations[0].key=platform
+                --set-string repoServer.tolerations[0].operator=Equal
                 --set-string repoServer.tolerations[0].value=true
-                --set repoServer.tolerations[0].effect=NoSchedule
-                --set redis.tolerations[0].key=platform
-                --set redis.tolerations[0].operator=Equal
+                --set-string repoServer.tolerations[0].effect=NoSchedule
+                --set-string redis.tolerations[0].key=platform
+                --set-string redis.tolerations[0].operator=Equal
                 --set-string redis.tolerations[0].value=true
-                --set redis.tolerations[0].effect=NoSchedule
+                --set-string redis.tolerations[0].effect=NoSchedule
+                --timeout 10m
+
+          - task: Kubernetes@1
+            displayName: Apply Ingress Routes
+            inputs:
+              connectionType: None
+              command: apply
+              useConfigurationFile: true
+              configurationType: filePath
+              configuration: k8s-config/platform-ingress.yaml
 
           - task: HelmDeploy@1
-            displayName: Install SonarQube
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            displayName: Deploy External Secrets
+            inputs:
+              connectionType: None
+              namespace: external-secrets
+              command: upgrade
+              chartType: Name
+              chartName: external-secrets/external-secrets
+              releaseName: external-secrets
+              install: true
+              waitForExecution: true
+              arguments: |
+                --create-namespace
+                --set installCRDs=true
+                --set-string tolerations[0].key=platform
+                --set-string tolerations[0].operator=Equal
+                --set-string tolerations[0].value=true
+                --set-string tolerations[0].effect=NoSchedule
+                --timeout 10m
+
+          - task: HelmDeploy@1
+            displayName: Deploy SonarQube
             inputs:
               connectionType: None
               namespace: sonarqube
@@ -269,29 +220,10 @@ stages:
               releaseName: sonarqube
               install: true
               waitForExecution: true
-              arguments: >
+              arguments: |
                 --create-namespace
-                --timeout 15m
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
+                --set-string tolerations[0].key=platform
+                --set-string tolerations[0].operator=Equal
                 --set-string tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
-                --set postgresql.primary.tolerations[0].key=platform
-                --set postgresql.primary.tolerations[0].operator=Equal
-                --set-string postgresql.primary.tolerations[0].value=true
-                --set postgresql.primary.tolerations[0].effect=NoSchedule
-
-          - task: Bash@3
-            displayName: Apply Platform Ingress Routes
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                kubectl apply -f k8s-config/platform-ingress.yaml
-                
-                sleep 5
-                kubectl get ingress -A
+                --set-string tolerations[0].effect=NoSchedule
+                --timeout 15m
