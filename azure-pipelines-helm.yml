@@ -104,10 +104,7 @@ stages:
                 --set controller.tolerations[0].operator=Equal
                 --set-string controller.tolerations[0].value=true
                 --set controller.tolerations[0].effect=NoSchedule
-                --set admissionWebhooks.job.tolerations[0].key=platform
-                --set admissionWebhooks.job.tolerations[0].operator=Equal
-                --set-string admissionWebhooks.job.tolerations[0].value=true
-                --set admissionWebhooks.job.tolerations[0].effect=NoSchedule
+                --set admissionWebhooks.enabled=false
                 --set defaultBackend.tolerations[0].key=platform
                 --set defaultBackend.tolerations[0].operator=Equal
                 --set-string defaultBackend.tolerations[0].value=true
