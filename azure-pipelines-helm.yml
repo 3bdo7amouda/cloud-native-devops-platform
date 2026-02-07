@@ -94,6 +94,31 @@ stages:
                 
                 echo "Cleanup complete"
 
+          - task: Bash@3
+            displayName: Create ServiceAccount for AWS Load Balancer Controller
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                
+                echo "Creating ServiceAccount with IRSA annotation..."
+                
+                cat <<EOF | kubectl apply -f -
+                apiVersion: v1
+                kind: ServiceAccount
+                metadata:
+                  name: aws-load-balancer-controller
+                  namespace: kube-system
+                  annotations:
+                    eks.amazonaws.com/role-arn: arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-aws_load_balancer_controller-irsa
+                EOF
+                
+                kubectl get sa aws-load-balancer-controller -n kube-system -o yaml
+
           - task: HelmDeploy@1
             displayName: Install AWS Load Balancer Controller
             env:
