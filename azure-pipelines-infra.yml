@@ -75,38 +75,3 @@ stages:
                 set -euo pipefail
                 cd "$(TF_DIR)"
                 terraform apply -auto-approve -input=false tfplan
-                
-                echo "================================"
-                echo "Terraform Outputs:"
-                echo "================================"
-                terraform output
-                echo "================================"
-
-          - task: AWSShellScript@1
-            displayName: Patch kube-system addons tolerations (platform taint)
-            condition: eq('${{ parameters.destroy }}', false)
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-
-                CLUSTER_NAME=$(aws eks list-clusters --region $(AWS_REGION) --query 'clusters[0]' --output text)
-                aws eks update-kubeconfig --region $(AWS_REGION) --name ${CLUSTER_NAME}
-
-                echo "Patching CoreDNS tolerations..."
-                kubectl -n kube-system patch deploy coredns --type='json' -p='[
-                  {"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"platform","operator":"Equal","value":"true","effect":"NoSchedule"}}
-                ]' || true
-
-                echo "Patching EBS CSI controller tolerations..."
-                kubectl -n kube-system patch deploy ebs-csi-controller --type='json' -p='[
-                  {"op":"add","path":"/spec/template/spec/tolerations/-","value":{"key":"platform","operator":"Equal","value":"true","effect":"NoSchedule"}}
-                ]' || true
-
-                kubectl -n kube-system rollout status deploy/coredns --timeout=10m
-                kubectl -n kube-system rollout status deploy/ebs-csi-controller --timeout=10m
-
-                echo "kube-system pods (summary):"
-                kubectl -n kube-system get pods -o wide | cat

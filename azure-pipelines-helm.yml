@@ -7,10 +7,6 @@ parameters:
     type: string
     default: nonprod
     values: [nonprod, prod]
-  - name: cleanupIngressNginx
-    displayName: Manual cleanup stuck ingress-nginx before deploy
-    type: boolean
-    default: false
 
 variables:
   AWS_REGION: us-east-1
@@ -84,51 +80,24 @@ stages:
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
                 --set vpcId=$(info.VPC_ID)
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
-          - task: Bash@3
-            displayName: (Optional) Manual cleanup ingress-nginx (only if stuck)
-            condition: and(succeeded(), eq('${{ parameters.cleanupIngressNginx }}', true))
+          - task: HelmDeploy@1
+            displayName: Deploy NGINX Ingress
             inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                echo "Manual cleanup enabled: removing stuck ingress-nginx hooks and Helm lock"
-                kubectl -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found || true
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-create --ignore-not-found || true
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-patch --ignore-not-found || true
-                helm -n ingress-nginx uninstall ingress-nginx 2>/dev/null || true
-                kubectl -n ingress-nginx delete secret -l owner=helm,name=ingress-nginx --ignore-not-found || true
-
-          - task: Bash@3
-            displayName: Deploy NGINX Ingress (Helm)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-
-                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
-                helm repo update >/dev/null 2>&1
-
-                # Fail fast if Helm release is stuck in a pending state
-                status=$(helm -n ingress-nginx status ingress-nginx 2>/dev/null | awk -F': ' '/^STATUS:/{print $2}' || true)
-                if [[ "$status" == pending-install || "$status" == pending-upgrade || "$status" == pending-rollback ]]; then
-                  echo "ERROR: ingress-nginx Helm release is stuck in state: $status"
-                  echo "Re-run pipeline with parameter cleanupIngressNginx=true to clean it up, then deploy again."
-                  exit 1
-                fi
-
-                helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-                  -n ingress-nginx --create-namespace \
-                  --version 4.14.3 \
-                  --values k8s-config/ingress-nginx-values.yaml \
-                  --wait --timeout 10m
-
-                kubectl -n ingress-nginx get svc ingress-nginx-controller
+              connectionType: None
+              namespace: ingress-nginx
+              command: upgrade
+              chartType: Name
+              chartName: ingress-nginx/ingress-nginx
+              releaseName: ingress-nginx
+              install: true
+              waitForExecution: true
+              arguments: >-
+                --create-namespace
+                --version 4.14.3
+                --set controller.service.type=ClusterIP
+                --timeout 10m
 
           - task: Bash@3
             displayName: Verify ingress-nginx controller is running
@@ -170,10 +139,6 @@ stages:
               arguments: >-
                 --create-namespace
                 --set server.service.type=ClusterIP
-                --set server.tolerations[0].key=platform
-                --set server.tolerations[0].operator=Equal
-                --set-string server.tolerations[0].value=true
-                --set server.tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: HelmDeploy@1
@@ -190,10 +155,6 @@ stages:
               arguments: >-
                 --create-namespace
                 --set installCRDs=true
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: HelmDeploy@1
@@ -209,10 +170,6 @@ stages:
               waitForExecution: true
               arguments: >-
                 --create-namespace
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: Kubernetes@1

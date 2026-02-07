@@ -91,3 +91,15 @@ variable "cluster_access_entries" {
   }))
   default = {}
 }
+
+variable "enable_addons" {
+  description = "Whether the EKS module should manage standard EKS addons"
+  type        = bool
+  default     = true
+}
+
+variable "ebs_csi_service_account_role_arn" {
+  description = "IRSA role ARN for the aws-ebs-csi-driver add-on"
+  type        = string
+  default     = null
+}
