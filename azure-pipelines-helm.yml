@@ -12,8 +12,6 @@ variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
   GIT_SERVICE_CONNECTION: git
-  # DATADOG_API_KEY: $(DATADOG_API_KEY) # Set this in pipeline variables
-  # DATADOG_APP_KEY: $(DATADOG_APP_KEY) # Set this in pipeline variables
 
 stages:
   - stage: DeployPlatform
