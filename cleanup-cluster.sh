@@ -1,21 +1,12 @@
 #!/bin/bash
 
-##############################################################################
-# Kubernetes Cluster Cleanup Script
-# Removes all platform resources from EKS cluster
-# Usage: ./cleanup-cluster.sh [--confirm]
-##############################################################################
-
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 CLUSTER_NAME="${CLUSTER_NAME:-}"
 
-##############################################################################
-# Functions
-##############################################################################
-
 log() { echo "[$(date +'%H:%M:%S')] $1"; }
+
 confirm() {
     [[ "${1:-}" == "--confirm" ]] && return
     read -p "Delete all platform resources? (yes/no): " -r
@@ -40,107 +31,60 @@ setup_cluster() {
     kubectl cluster-info &>/dev/null || { log "ERROR: Cannot connect to cluster"; exit 1; }
 }
 
-cleanup_resources() {
-    log "Cleaning up ingress resources..."
-    kubectl delete ingress -A --all --timeout=60s --ignore-not-found &>/dev/null || true
-    
-    log "Cleaning up TargetGroupBindings..."
-    if kubectl get crd targetgroupbindings.elbv2.k8s.aws &>/dev/null; then
-        kubectl get targetgroupbinding -A -o name 2>/dev/null | while read -r tgb; do
-            kubectl patch $tgb -p '{"metadata":{"finalizers":[]}}' --type=merge &>/dev/null || true
-            kubectl delete $tgb --timeout=30s &>/dev/null || true
-        done
-    fi
+cleanup_platform_ingress() {
+    log "Removing platform ingress..."
+    kubectl delete -f k8s-config/platform-ingress.yaml --ignore-not-found &>/dev/null || true
 }
 
-cleanup_helm() {
+cleanup_target_group_binding() {
+    log "Removing TargetGroupBinding..."
+    kubectl delete targetgroupbinding ingress-nlb-tgb -n ingress-nginx --ignore-not-found &>/dev/null || true
+}
+
+cleanup_helm_releases() {
     log "Uninstalling Helm releases..."
     helm uninstall argocd -n argocd --wait --timeout 5m &>/dev/null || true
-    helm uninstall sonarqube -n sonarqube --wait --timeout 5m &>/dev/null || true
-    helm uninstall external-secrets -n external-secrets --wait --timeout 5m &>/dev/null || true
     helm uninstall ingress-nginx -n ingress-nginx --wait --timeout 5m &>/dev/null || true
     helm uninstall aws-load-balancer-controller -n kube-system --wait --timeout 5m &>/dev/null || true
 }
 
-cleanup_k8s() {
-    log "Cleaning up Kubernetes resources..."
+cleanup_service_account() {
+    log "Removing AWS Load Balancer Controller ServiceAccount..."
     kubectl delete sa aws-load-balancer-controller -n kube-system --ignore-not-found &>/dev/null || true
-    
-    for ns in sonarqube argocd external-secrets; do
-        kubectl delete pvc --all -n "$ns" --timeout=60s --ignore-not-found &>/dev/null || true
-    done
-    
-    kubectl delete cm -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --ignore-not-found &>/dev/null || true
-}
-
-force_delete_ns() {
-    local ns=$1
-    kubectl delete namespace "$ns" --timeout=60s --ignore-not-found &>/dev/null && return
-    
-    if kubectl get namespace "$ns" &>/dev/null; then
-        kubectl get namespace "$ns" -o json 2>/dev/null | \
-            jq '.spec.finalizers = []' | \
-            kubectl replace --raw "/api/v1/namespaces/$ns/finalize" -f - &>/dev/null || true
-        sleep 3
-        kubectl delete namespace "$ns" --timeout=30s --ignore-not-found &>/dev/null || true
-    fi
 }
 
 cleanup_namespaces() {
     log "Deleting namespaces..."
-    for ns in argocd sonarqube external-secrets ingress-nginx; do
-        force_delete_ns "$ns"
-    done
-}
-
-cleanup_crds() {
-    log "Cleaning up CRDs..."
-    kubectl delete crd targetgroupbindings.elbv2.k8s.aws ingressclassparams.elbv2.k8s.aws --timeout=60s --ignore-not-found &>/dev/null || true
-    kubectl delete crd secretstores.external-secrets.io externalsecrets.external-secrets.io \
-        clustersecretstores.external-secrets.io clusterexternalsecrets.external-secrets.io --timeout=60s --ignore-not-found &>/dev/null || true
-    kubectl delete crd applications.argoproj.io applicationsets.argoproj.io appprojects.argoproj.io --timeout=60s --ignore-not-found &>/dev/null || true
-}
-
-cleanup_webhooks() {
-    log "Cleaning up webhooks..."
-    kubectl delete validatingwebhookconfigurations ingress-nginx-admission aws-load-balancer-webhook argocd-application-controller --ignore-not-found &>/dev/null || true
-    kubectl delete mutatingwebhookconfigurations ingress-nginx-admission aws-load-balancer-webhook --ignore-not-found &>/dev/null || true
-}
-
-cleanup_helm_secrets() {
-    log "Cleaning up Helm secrets..."
-    for ns in kube-system ingress-nginx external-secrets argocd sonarqube; do
-        kubectl delete secret -n "$ns" -l owner=helm --ignore-not-found &>/dev/null || true
-    done
+    kubectl delete namespace ingress-nginx --timeout=60s --ignore-not-found &>/dev/null || true
+    kubectl delete namespace argocd --timeout=60s --ignore-not-found &>/dev/null || true
 }
 
 verify() {
     log "Verifying cleanup..."
     echo ""
-    helm list -A 2>/dev/null || log "✓ No Helm releases"
-    kubectl get ns 2>/dev/null | grep -E 'argocd|sonarqube|external-secrets|ingress-nginx' || log "✓ Namespaces cleaned"
-    kubectl get targetgroupbinding -A 2>/dev/null || log "✓ No TargetGroupBindings"
-    kubectl get ingress -A 2>/dev/null || log "✓ No Ingress resources"
-    kubectl get crd 2>/dev/null | grep -E 'external-secrets|argoproj|elbv2' || log "✓ CRDs cleaned"
+    
+    local releases=$(helm list -A 2>/dev/null | grep -E 'argocd|ingress-nginx|aws-load-balancer-controller' || true)
+    [[ -z "$releases" ]] && log "✓ Helm releases removed" || log "⚠ Some Helm releases still exist"
+    
+    local namespaces=$(kubectl get ns 2>/dev/null | grep -E 'argocd|ingress-nginx' || true)
+    [[ -z "$namespaces" ]] && log "✓ Namespaces removed" || log "⚠ Some namespaces still exist"
+    
+    local sa=$(kubectl get sa aws-load-balancer-controller -n kube-system 2>/dev/null || true)
+    [[ -z "$sa" ]] && log "✓ ServiceAccount removed" || log "⚠ ServiceAccount still exists"
+    
     echo ""
     log "Cleanup complete!"
 }
 
-##############################################################################
-# Main
-##############################################################################
-
 main() {
-    log "Starting cluster cleanup..."
+    log "Starting platform cleanup..."
     confirm "${1:-}"
     setup_cluster
-    cleanup_resources
-    cleanup_helm
-    cleanup_k8s
-    cleanup_webhooks
+    cleanup_platform_ingress
+    cleanup_target_group_binding
+    cleanup_helm_releases
+    cleanup_service_account
     cleanup_namespaces
-    cleanup_crds
-    cleanup_helm_secrets
     verify
     log "Cluster ready for fresh deployment"
 }

@@ -56,20 +56,13 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
-          - task: Kubernetes@1
+          - task: Bash@3
             displayName: Create AWS LBC ServiceAccount
             inputs:
-              connectionType: None
-              command: apply
-              useConfigurationFile: true
-              configuration: |
-                apiVersion: v1
-                kind: ServiceAccount
-                metadata:
-                  name: aws-load-balancer-controller
-                  namespace: kube-system
-                  annotations:
-                    eks.amazonaws.com/role-arn: arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa
+              targetType: inline
+              script: |
+                sed "s|ROLE_ARN_PLACEHOLDER|arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa|g" \
+                  k8s-config/aws-lbc-serviceaccount.yaml | kubectl apply -f -
 
           - task: HelmDeploy@1
             displayName: Deploy AWS Load Balancer Controller
@@ -109,24 +102,13 @@ stages:
                 --set controller.tolerations[0].effect=NoSchedule
                 --timeout 10m
 
-          - task: Kubernetes@1
+          - task: Bash@3
             displayName: Create TargetGroupBinding
             inputs:
-              connectionType: None
-              command: apply
-              useConfigurationFile: true
-              configuration: |
-                apiVersion: elbv2.k8s.aws/v1beta1
-                kind: TargetGroupBinding
-                metadata:
-                  name: ingress-nlb-tgb
-                  namespace: ingress-nginx
-                spec:
-                  targetGroupARN: $(info.NLB_TG_ARN)
-                  targetType: ip
-                  serviceRef:
-                    name: ingress-nginx-controller
-                    port: 80
+              targetType: inline
+              script: |
+                sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" \
+                  k8s-config/targetgroup-binding.yaml | kubectl apply -f -
 
           - task: HelmDeploy@1
             displayName: Deploy ArgoCD
