@@ -119,30 +119,6 @@ stages:
                 
                 kubectl get sa aws-load-balancer-controller -n kube-system -o yaml
 
-          - task: Bash@3
-            displayName: Verify AWS LBC IAM Role Permissions
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Checking IAM role and policy..."
-                ROLE_NAME="$(CLUSTER_NAME)-aws_load_balancer_controller-irsa"
-                
-                aws iam get-role --role-name "${ROLE_NAME}" || {
-                  echo "ERROR: IAM Role ${ROLE_NAME} not found!"
-                  exit 1
-                }
-                
-                echo "Checking attached policies..."
-                aws iam list-attached-role-policies --role-name "${ROLE_NAME}"
-                
-                echo "IAM role verification complete"
-
           - task: HelmDeploy@1
             displayName: Install AWS Load Balancer Controller
             env:
@@ -157,50 +133,14 @@ stages:
               chartName: eks/aws-load-balancer-controller
               releaseName: aws-load-balancer-controller
               install: true
-              waitForExecution: false
+              waitForExecution: true
               arguments: >
-                --timeout 15m
+                --timeout 10m
                 --set clusterName=$(CLUSTER_NAME)
                 --set serviceAccount.create=false
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
                 --set vpcId=$(VPC_ID)
-
-          - task: Bash@3
-            displayName: Wait for AWS Load Balancer Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Waiting for AWS Load Balancer Controller deployment..."
-                kubectl wait --for=condition=Available --timeout=300s \
-                  deployment/aws-load-balancer-controller -n kube-system || {
-                  
-                  echo "ERROR: Deployment did not become ready. Checking status..."
-                  kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
-                  kubectl describe deployment aws-load-balancer-controller -n kube-system
-                  
-                  echo "Checking pod logs..."
-                  POD=$(kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-                  if [ -n "$POD" ]; then
-                    kubectl logs $POD -n kube-system --tail=50 || true
-                  fi
-                  
-                  exit 1
-                }
-                
-                echo "Verifying TargetGroupBinding CRD..."
-                kubectl get crd targetgroupbindings.elbv2.k8s.aws || {
-                  echo "ERROR: TargetGroupBinding CRD not installed!"
-                  exit 1
-                }
-                
-                echo "AWS Load Balancer Controller is ready!"
 
           - task: HelmDeploy@1
             displayName: Install NGINX Ingress Controller
