@@ -148,44 +148,44 @@ stages:
                 --set server.tolerations[0].effect=NoSchedule
                 --timeout 10m
 
-          - task: HelmDeploy@1
-            displayName: Deploy External Secrets
-            inputs:
-              connectionType: None
-              namespace: external-secrets
-              command: upgrade
-              chartType: Name
-              chartName: external-secrets/external-secrets
-              releaseName: external-secrets
-              install: true
-              waitForExecution: true
-              arguments: |
-                --create-namespace
-                --set installCRDs=true
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy External Secrets
+          #   inputs:
+          #     connectionType: None
+          #     namespace: external-secrets
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: external-secrets/external-secrets
+          #     releaseName: external-secrets
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: |
+          #       --create-namespace
+          #       --set installCRDs=true
+          #       --set tolerations[0].key=platform
+          #       --set tolerations[0].operator=Equal
+          #       --set tolerations[0].value=true
+          #       --set tolerations[0].effect=NoSchedule
+          #       --timeout 10m
 
-          - task: HelmDeploy@1
-            displayName: Deploy SonarQube
-            inputs:
-              connectionType: None
-              namespace: sonarqube
-              command: upgrade
-              chartType: Name
-              chartName: sonarqube/sonarqube
-              releaseName: sonarqube
-              install: true
-              waitForExecution: true
-              arguments: |
-                --create-namespace
-                --set tolerations[0].key=platform
-                --set tolerations[0].operator=Equal
-                --set tolerations[0].value=true
-                --set tolerations[0].effect=NoSchedule
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy SonarQube
+          #   inputs:
+          #     connectionType: None
+          #     namespace: sonarqube
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: sonarqube/sonarqube
+          #     releaseName: sonarqube
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: |
+          #       --create-namespace
+          #       --set tolerations[0].key=platform
+          #       --set tolerations[0].operator=Equal
+          #       --set tolerations[0].value=true
+          #       --set tolerations[0].effect=NoSchedule
+          #       --timeout 10m
 
           - task: Kubernetes@1
             displayName: Apply Platform Ingress
