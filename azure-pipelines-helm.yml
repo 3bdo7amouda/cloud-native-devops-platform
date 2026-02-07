@@ -65,6 +65,35 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
+          - task: Bash@3
+            displayName: Cleanup Stuck Helm Releases
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+            inputs:
+              targetType: inline
+              script: |
+                set -e
+                
+                echo "Checking for stuck Helm releases..."
+                
+                # Check and cleanup AWS Load Balancer Controller
+                if helm status aws-load-balancer-controller -n kube-system 2>/dev/null | grep -q "pending"; then
+                  echo "Found stuck aws-load-balancer-controller release, cleaning up..."
+                  helm rollback aws-load-balancer-controller 0 -n kube-system --wait || true
+                  kubectl -n kube-system delete secret sh.helm.release.v1.aws-load-balancer-controller.v1 --ignore-not-found=true
+                fi
+                
+                # Check and cleanup NGINX Ingress Controller
+                if helm status ingress-nginx -n ingress-nginx 2>/dev/null | grep -q "pending"; then
+                  echo "Found stuck ingress-nginx release, cleaning up..."
+                  helm rollback ingress-nginx 0 -n ingress-nginx --wait || true
+                  kubectl -n ingress-nginx delete secret sh.helm.release.v1.ingress-nginx.v1 --ignore-not-found=true
+                fi
+                
+                echo "Cleanup complete"
+
           - task: HelmDeploy@1
             displayName: Install AWS Load Balancer Controller
             env:
