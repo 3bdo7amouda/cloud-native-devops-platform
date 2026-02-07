@@ -11,7 +11,6 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
-  GIT_SERVICE_CONNECTION: git
 
 stages:
   - stage: DeployPlatform
@@ -24,10 +23,9 @@ stages:
 
         steps:
           - checkout: self
-            persistCredentials: true
 
           - task: AWSShellScript@1
-            displayName: Setup cluster + export AWS creds for Helm tasks
+            displayName: Setup Cluster
             name: setup
             inputs:
               awsCredentials: $(AWS_SERVICE_CONNECTION)
@@ -38,68 +36,33 @@ stages:
 
                 AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
                 CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
-                
-                if [ -z "${CLUSTER_NAME}" ] || [ "${CLUSTER_NAME}" = "None" ]; then
-                  echo "No EKS clusters found in $(AWS_REGION)"
-                  exit 1
-                fi
-
-                NLB_TG_ARN=$(aws elbv2 describe-target-groups \
-                  --query "TargetGroups[?TargetGroupName=='nonprod-nlb-tg'].TargetGroupArn" \
-                  --output text)
+                VPC_ID="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --query 'cluster.resourcesVpcConfig.vpcId' --output text)"
+                NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?TargetGroupName=='nonprod-nlb-tg'].TargetGroupArn" --output text)
                 
                 aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
-                kubectl cluster-info
                 
                 echo "##vso[task.setvariable variable=AWS_ACCOUNT_ID]${AWS_ACCOUNT_ID}"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME]${CLUSTER_NAME}"
+                echo "##vso[task.setvariable variable=VPC_ID]${VPC_ID}"
                 echo "##vso[task.setvariable variable=NLB_TG_ARN]${NLB_TG_ARN}"
                 echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
                 echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
                 echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
 
           - task: Bash@3
-            displayName: Add Helm repositories
+            displayName: Add Helm Repositories
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               targetType: inline
               script: |
-                set -euo pipefail
                 helm repo add eks https://aws.github.io/eks-charts
-                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add argo https://argoproj.github.io/argo-helm
                 helm repo add external-secrets https://charts.external-secrets.io
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
-
-          - task: Bash@3
-            displayName: Cleanup stuck Helm releases
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Checking for stuck Helm releases..."
-                
-                # Clean up ingress-nginx if stuck
-                if kubectl get secret -n ingress-nginx 2>/dev/null | grep -q "sh.helm.release"; then
-                  RELEASE_STATUS=$(helm list -n ingress-nginx -o json | jq -r '.[0].status // "none"')
-                  if [ "$RELEASE_STATUS" == "none" ] || [ "$RELEASE_STATUS" == "pending-install" ]; then
-                    echo "Found stuck ingress-nginx release, cleaning up..."
-                    kubectl delete secret -n ingress-nginx -l owner=helm 2>/dev/null || true
-                  fi
-                fi
-                
-                echo "Cleanup complete"
 
           - task: HelmDeploy@1
             displayName: Install AWS Load Balancer Controller
@@ -107,7 +70,6 @@ stages:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: kube-system
@@ -123,125 +85,43 @@ stages:
                 --set serviceAccount.create=false
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
-
-          - task: HelmDeploy@1
-            displayName: Install NGINX Ingress Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >
-                --create-namespace
-                --timeout 10m
-                --set controller.tolerations[0].key=platform
-                --set controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set controller.tolerations[0].effect=NoSchedule
-                --set controller.admissionWebhooks.patch.tolerations[0].key=platform
-                --set controller.admissionWebhooks.patch.tolerations[0].operator=Equal
-                --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
-                --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
-                --set controller.service.type=NodePort
-                --set controller.publishService.enabled=false
+                --set vpcId=$(VPC_ID)
 
           - task: Bash@3
-            displayName: Create TargetGroupBinding for NLB Integration
+            displayName: Create Platform Backend Service
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                kubectl apply -f k8s-config/platform-backend.yaml
+                kubectl wait --for=condition=Available deployment/platform-router -n platform-backend --timeout=300s
+
+          - task: Bash@3
+            displayName: Create TargetGroupBinding
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
             inputs:
               targetType: inline
               script: |
                 set -euo pipefail
                 
-                echo "Creating TargetGroupBinding to connect NLB to ingress-nginx..."
+                sed "s|TARGET_GROUP_ARN_PLACEHOLDER|$(NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
                 
-                cat <<EOF | kubectl apply -f -
-                apiVersion: elbv2.k8s.aws/v1beta1
-                kind: TargetGroupBinding
-                metadata:
-                  name: ingress-nlb-tgb
-                  namespace: ingress-nginx
-                spec:
-                  targetGroupARN: $(NLB_TG_ARN)
-                  targetType: ip
-                  serviceRef:
-                    name: ingress-nginx-controller
-                    port: 80
-                EOF
-                
-                echo "Waiting for TargetGroupBinding to be ready..."
                 sleep 10
-                
-                kubectl get targetgroupbinding ingress-nlb-tgb -n ingress-nginx -o wide
-                kubectl describe targetgroupbinding ingress-nlb-tgb -n ingress-nginx
-                
-                echo "✅ TargetGroupBinding created successfully"
-
-          - task: Bash@3
-            displayName: Verify NGINX Ingress Controller
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Waiting for ingress-nginx controller to be ready..."
-                kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=ingress-nginx \
-                  -n ingress-nginx --timeout=300s
-                
-                kubectl get svc ingress-nginx-controller -n ingress-nginx
-                echo "✅ NGINX Ingress Controller deployed successfully"
-
-          - task: AWSShellScript@1
-            displayName: Verify NLB Target Registration
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                
-                echo "Checking NLB target health..."
-                sleep 30
-                
-                TARGET_HEALTH=$(aws elbv2 describe-target-health --target-group-arn "$(NLB_TG_ARN)")
-                
-                HEALTHY_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy") | .Target.Id' | wc -l)
-                TOTAL_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions | length')
-                
-                echo "Target health: ${HEALTHY_COUNT}/${TOTAL_COUNT} healthy"
-                
-                if [ "${TOTAL_COUNT}" -gt 0 ]; then
-                  echo "Targets registered to NLB"
-                  echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | "\(.Target.Id): \(.TargetHealth.State)"'
-                else
-                  echo "No targets registered yet"
-                fi
-
+                kubectl get targetgroupbinding platform-nlb-tgb -n platform-backend
+    
           - task: HelmDeploy@1
             displayName: Install External Secrets Operator
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: external-secrets
@@ -275,7 +155,6 @@ stages:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: argocd
@@ -304,8 +183,6 @@ stages:
                 --set redis.tolerations[0].operator=Equal
                 --set-string redis.tolerations[0].value=true
                 --set redis.tolerations[0].effect=NoSchedule
-                --set server.ingress.enabled=true
-                --set server.ingress.ingressClassName=nginx
 
           - task: HelmDeploy@1
             displayName: Install SonarQube
@@ -313,7 +190,6 @@ stages:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
               AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
               AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-              AWS_DEFAULT_REGION: $(AWS_REGION)
             inputs:
               connectionType: None
               namespace: sonarqube
@@ -334,5 +210,3 @@ stages:
                 --set postgresql.primary.tolerations[0].operator=Equal
                 --set-string postgresql.primary.tolerations[0].value=true
                 --set postgresql.primary.tolerations[0].effect=NoSchedule
-                --set ingress.enabled=true
-                --set ingress.ingressClassName=nginx
