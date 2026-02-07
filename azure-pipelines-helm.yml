@@ -7,114 +7,14 @@ parameters:
     type: string
     default: nonprod
     values: [nonprod, prod]
-  - name: action
-    displayName: Action
-    type: string
-    default: deploy
-    values: 
-      - deploy
-      - cleanup
-      - redeploy
 
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
 
 stages:
-  - stage: Cleanup
-    displayName: Cleanup Platform Resources
-    condition: or(eq('${{ parameters.action }}', 'cleanup'), eq('${{ parameters.action }}', 'redeploy'))
-    jobs:
-      - job: CleanupResources
-        displayName: Cleanup Kubernetes Resources
-        pool:
-          name: aws-self-hosted
-
-        steps:
-          - checkout: self
-
-          - task: AWSShellScript@1
-            displayName: Setup Cluster Connection
-            name: setup
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-
-                CLUSTER_NAME="$(aws eks list-clusters --query 'clusters[0]' --output text)"
-                aws eks update-kubeconfig --region "$(AWS_REGION)" --name "${CLUSTER_NAME}"
-                
-                echo "##vso[task.setvariable variable=AWS_ACCESS_KEY_ID;issecret=true]${AWS_ACCESS_KEY_ID}"
-                echo "##vso[task.setvariable variable=AWS_SECRET_ACCESS_KEY;issecret=true]${AWS_SECRET_ACCESS_KEY}"
-                echo "##vso[task.setvariable variable=AWS_SESSION_TOKEN;issecret=true]${AWS_SESSION_TOKEN:-}"
-
-          - task: Bash@3
-            displayName: Uninstall Helm Releases
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Uninstalling Helm releases..."
-                helm uninstall sonarqube -n sonarqube --wait --timeout 5m || echo "SonarQube not found"
-                helm uninstall argocd -n argocd --wait --timeout 5m || echo "Argo CD not found"
-                helm uninstall external-secrets -n external-secrets --wait --timeout 5m || echo "External Secrets not found"
-                helm uninstall ingress-nginx -n ingress-nginx --wait --timeout 5m || echo "NGINX Ingress not found"
-                helm uninstall aws-load-balancer-controller -n kube-system --wait --timeout 5m || echo "AWS LBC not found"
-
-          - task: Bash@3
-            displayName: Delete Kubernetes Resources
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Deleting Kubernetes resources..."
-                kubectl delete targetgroupbinding --all -n ingress-nginx --ignore-not-found=true --timeout=60s || true
-                kubectl delete ingress --all -n argocd --ignore-not-found=true --timeout=60s || true
-                kubectl delete ingress --all -n sonarqube --ignore-not-found=true --timeout=60s || true
-                kubectl delete sa aws-load-balancer-controller -n kube-system --ignore-not-found=true || true
-                
-                echo "Deleting namespaces..."
-                kubectl delete namespace sonarqube --ignore-not-found=true --timeout=120s || true
-                kubectl delete namespace argocd --ignore-not-found=true --timeout=120s || true
-                kubectl delete namespace external-secrets --ignore-not-found=true --timeout=120s || true
-                kubectl delete namespace ingress-nginx --ignore-not-found=true --timeout=120s || true
-
-          - task: Bash@3
-            displayName: Cleanup Stuck Helm Secrets
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                
-                echo "Cleaning up stuck Helm secrets..."
-                kubectl delete secret -n kube-system -l owner=helm --ignore-not-found=true || true
-                kubectl delete secret -n ingress-nginx -l owner=helm --ignore-not-found=true || true
-                kubectl delete secret -n external-secrets -l owner=helm --ignore-not-found=true || true
-                kubectl delete secret -n argocd -l owner=helm --ignore-not-found=true || true
-                kubectl delete secret -n sonarqube -l owner=helm --ignore-not-found=true || true
-                
-                echo "Cleanup complete"
-
   - stage: DeployPlatform
     displayName: Deploy Platform Services
-    dependsOn: Cleanup
-    condition: or(eq('${{ parameters.action }}', 'deploy'), eq('${{ parameters.action }}', 'redeploy'))
     jobs:
       - job: DeployTools
         displayName: Deploy Platform Tools
@@ -395,20 +295,3 @@ stages:
                 
                 sleep 5
                 kubectl get ingress -A
-
-          - task: AWSShellScript@1
-            displayName: Verify NLB Target Registration
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                
-                sleep 20
-                TARGET_HEALTH=$(aws elbv2 describe-target-health --target-group-arn "$(NLB_TG_ARN)")
-                HEALTHY_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | select(.TargetHealth.State == "healthy") | .Target.Id' | wc -l)
-                TOTAL_COUNT=$(echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions | length')
-                
-                echo "Target health: ${HEALTHY_COUNT}/${TOTAL_COUNT} healthy"
-                echo "${TARGET_HEALTH}" | jq -r '.TargetHealthDescriptions[] | "\(.Target.Id): \(.TargetHealth.State)"'
