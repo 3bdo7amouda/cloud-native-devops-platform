@@ -87,68 +87,52 @@ stages:
                 --timeout 10m
 
           - task: Bash@3
-            displayName: Pre-clean ingress-nginx stuck/pending Helm release and hook Jobs
+            displayName: (Manual) ingress-nginx cleanup instructions
             inputs:
               targetType: inline
               script: |
-                set -euo pipefail
+                echo "If Deploy NGINX Ingress fails with 'another operation is in progress', run:"
+                echo "  kubectl -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found"
+                echo "  kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-create --ignore-not-found"
+                echo "  kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-patch --ignore-not-found"
+                echo "  helm -n ingress-nginx uninstall ingress-nginx || true"
+                echo "  kubectl -n ingress-nginx delete secret -l owner=helm,name=ingress-nginx --ignore-not-found"
 
-                # If a previous pipeline run was cancelled or failed mid-install, Helm can leave the release in pending-install
-                # and block subsequent upgrades with: "another operation (install/upgrade/rollback) is in progress".
-                status=$(helm -n ingress-nginx status ingress-nginx 2>/dev/null | awk -F': ' '/^STATUS:/{print $2}' || true)
-                if [[ "$status" == pending-install || "$status" == pending-upgrade || "$status" == pending-rollback ]]; then
-                  echo "Found ingress-nginx Helm release in $status; cleaning up lock and leftover resources."
-
-                  # Best-effort uninstall/rollback
-                  helm -n ingress-nginx uninstall ingress-nginx 2>/dev/null || true
-
-                  # Remove Helm release secret that keeps the lock (safe because release is stuck and we are reinstalling)
-                  kubectl -n ingress-nginx delete secret sh.helm.release.v1.ingress-nginx.v1 --ignore-not-found || true
-                fi
-
-                # Always clean up stuck admission hook jobs/pods from old runs
-                kubectl -n ingress-nginx delete job ingress-nginx-admission-create --ignore-not-found || true
-                kubectl -n ingress-nginx delete job ingress-nginx-admission-patch --ignore-not-found || true
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-create --ignore-not-found || true
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-patch --ignore-not-found || true
 
           - task: Bash@3
-            displayName: Pre-clean ingress-nginx stuck hook Jobs (if any)
+            displayName: Deploy NGINX Ingress (Helm via Bash)
             inputs:
               targetType: inline
               script: |
                 set -euo pipefail
-                # If a previous run created these, they can block subsequent upgrades.
-                kubectl -n ingress-nginx delete job ingress-nginx-admission-create --ignore-not-found
-                kubectl -n ingress-nginx delete job ingress-nginx-admission-patch --ignore-not-found
-                # Also delete any pods created by those jobs.
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-create --ignore-not-found
-                kubectl -n ingress-nginx delete pod -l job-name=ingress-nginx-admission-patch --ignore-not-found
 
-          - task: HelmDeploy@1
-            displayName: Deploy NGINX Ingress
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --set controller.service.type=ClusterIP
-                --set controller.tolerations[0].key=platform
-                --set controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set controller.tolerations[0].effect=NoSchedule
-                --set admissionWebhooks.enabled=false
-                --set defaultBackend.tolerations[0].key=platform
-                --set defaultBackend.tolerations[0].operator=Equal
-                --set-string defaultBackend.tolerations[0].value=true
-                --set defaultBackend.tolerations[0].effect=NoSchedule
-                --timeout 10m
+                # Pin chart version for reproducibility. Update when you want to bump.
+                CHART_VERSION="4.14.3"
+
+                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+                helm repo update >/dev/null 2>&1
+
+                # Install/upgrade with settings suitable for tainted-only platform nodes.
+                # - admissionWebhooks.disabled avoids Helm hook Jobs that otherwise need tolerations.
+                helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+                  --namespace ingress-nginx \
+                  --create-namespace \
+                  --version "${CHART_VERSION}" \
+                  --wait \
+                  --timeout 10m \
+                  --set controller.service.type=ClusterIP \
+                  --set controller.tolerations[0].key=platform \
+                  --set controller.tolerations[0].operator=Equal \
+                  --set-string controller.tolerations[0].value=true \
+                  --set controller.tolerations[0].effect=NoSchedule \
+                  --set admissionWebhooks.enabled=false \
+                  --set defaultBackend.tolerations[0].key=platform \
+                  --set defaultBackend.tolerations[0].operator=Equal \
+                  --set-string defaultBackend.tolerations[0].value=true \
+                  --set defaultBackend.tolerations[0].effect=NoSchedule
+
+                kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
+                kubectl -n ingress-nginx get pods -o wide
 
           - task: Bash@3
             displayName: Verify ingress-nginx controller is running
