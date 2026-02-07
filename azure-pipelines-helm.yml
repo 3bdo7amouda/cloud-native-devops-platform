@@ -128,6 +128,8 @@ stages:
                 --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
                 --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
                 --set controller.service.type=LoadBalancer
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb-ip
+                --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"=internal
                 --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-target-group-arn"=$(NLB_TG_ARN)
                 --set controller.publishService.enabled=true
 
