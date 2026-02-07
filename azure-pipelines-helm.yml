@@ -56,79 +56,79 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
-          - task: Bash@3
-            displayName: Create AWS LBC ServiceAccount
-            inputs:
-              targetType: inline
-              script: |
-                sed "s|ROLE_ARN_PLACEHOLDER|arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa|g" \
-                  k8s-config/aws-lbc-serviceaccount.yaml | kubectl apply -f -
+          # - task: Bash@3
+          #   displayName: Create AWS LBC ServiceAccount
+          #   inputs:
+          #     targetType: inline
+          #     script: |
+          #       sed "s|ROLE_ARN_PLACEHOLDER|arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa|g" \
+          #         k8s-config/aws-lbc-serviceaccount.yaml | kubectl apply -f -
 
-          - task: HelmDeploy@1
-            displayName: Deploy AWS Load Balancer Controller
-            inputs:
-              connectionType: None
-              namespace: kube-system
-              command: upgrade
-              chartType: Name
-              chartName: eks/aws-load-balancer-controller
-              releaseName: aws-load-balancer-controller
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --set clusterName=$(info.CLUSTER_NAME)
-                --set serviceAccount.create=false
-                --set serviceAccount.name=aws-load-balancer-controller
-                --set region=$(AWS_REGION)
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy AWS Load Balancer Controller
+          #   inputs:
+          #     connectionType: None
+          #     namespace: kube-system
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: eks/aws-load-balancer-controller
+          #     releaseName: aws-load-balancer-controller
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >-
+          #       --set clusterName=$(info.CLUSTER_NAME)
+          #       --set serviceAccount.create=false
+          #       --set serviceAccount.name=aws-load-balancer-controller
+          #       --set region=$(AWS_REGION)
+          #       --timeout 10m
 
-          - task: HelmDeploy@1
-            displayName: Deploy NGINX Ingress
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --set controller.service.type=ClusterIP
-                --set controller.tolerations[0].key=platform
-                --set controller.tolerations[0].operator=Equal
-                --set controller.tolerations[0].value=true
-                --set controller.tolerations[0].effect=NoSchedule
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy NGINX Ingress
+          #   inputs:
+          #     connectionType: None
+          #     namespace: ingress-nginx
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: ingress-nginx/ingress-nginx
+          #     releaseName: ingress-nginx
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >-
+          #       --create-namespace
+          #       --set controller.service.type=ClusterIP
+          #       --set controller.tolerations[0].key=platform
+          #       --set controller.tolerations[0].operator=Equal
+          #       --set controller.tolerations[0].value=true
+          #       --set controller.tolerations[0].effect=NoSchedule
+          #       --timeout 10m
 
-          - task: Bash@3
-            displayName: Create TargetGroupBinding
-            inputs:
-              targetType: inline
-              script: |
-                sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" \
-                  k8s-config/targetgroup-binding.yaml | kubectl apply -f -
+          # - task: Bash@3
+          #   displayName: Create TargetGroupBinding
+          #   inputs:
+          #     targetType: inline
+          #     script: |
+          #       sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" \
+          #         k8s-config/targetgroup-binding.yaml | kubectl apply -f -
 
-          - task: HelmDeploy@1
-            displayName: Deploy ArgoCD
-            inputs:
-              connectionType: None
-              namespace: argocd
-              command: upgrade
-              chartType: Name
-              chartName: argo/argo-cd
-              releaseName: argocd
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --set server.service.type=ClusterIP
-                --set server.tolerations[0].key=platform
-                --set server.tolerations[0].operator=Equal
-                --set server.tolerations[0].value=true
-                --set server.tolerations[0].effect=NoSchedule
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy ArgoCD
+          #   inputs:
+          #     connectionType: None
+          #     namespace: argocd
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: argo/argo-cd
+          #     releaseName: argocd
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >-
+          #       --create-namespace
+          #       --set server.service.type=ClusterIP
+          #       --set server.tolerations[0].key=platform
+          #       --set server.tolerations[0].operator=Equal
+          #       --set server.tolerations[0].value=true
+          #       --set server.tolerations[0].effect=NoSchedule
+          #       --timeout 10m
 
           # - task: HelmDeploy@1
           #   displayName: Deploy External Secrets
@@ -169,28 +169,28 @@ stages:
           #       --set tolerations[0].effect=NoSchedule
           #       --timeout 10m
 
-          - task: Kubernetes@1
-            displayName: Apply Platform Ingress
-            inputs:
-              connectionType: None
-              command: apply
-              useConfigurationFile: true
-              configurationType: filePath
-              configuration: k8s-config/platform-ingress.yaml
+          # - task: Kubernetes@1
+          #   displayName: Apply Platform Ingress
+          #   inputs:
+          #     connectionType: None
+          #     command: apply
+          #     useConfigurationFile: true
+          #     configurationType: filePath
+          #     configuration: k8s-config/platform-ingress.yaml
 
-          - task: Kubernetes@1
-            displayName: Get ArgoCD Secret
-            name: argocd
-            inputs:
-              connectionType: None
-              command: get
-              arguments: secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}'
-              outputFormat: json
+          # - task: Kubernetes@1
+          #   displayName: Get ArgoCD Secret
+          #   name: argocd
+          #   inputs:
+          #     connectionType: None
+          #     command: get
+          #     arguments: secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}'
+          #     outputFormat: json
 
-          - task: Bash@3
-            displayName: Display Access Info
-            inputs:
-              targetType: inline
-              script: |
-                echo "ArgoCD Username: admin"
-                echo "ArgoCD Password: $(echo '$(argocd.KubectlOutput)' | base64 -d)"
+          # - task: Bash@3
+          #   displayName: Display Access Info
+          #   inputs:
+          #     targetType: inline
+          #     script: |
+          #       echo "ArgoCD Username: admin"
+          #       echo "ArgoCD Password: $(echo '$(argocd.KubectlOutput)' | base64 -d)"
