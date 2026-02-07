@@ -61,6 +61,25 @@ confirm_action() {
 # Setup Functions
 ##############################################################################
 
+check_aws_credentials() {
+    print_header "Validating AWS credentials"
+    
+    log_info "Checking AWS authentication..."
+    if ! aws sts get-caller-identity &>/dev/null; then
+        log_error "AWS credentials are not configured or have expired"
+        log_error "Please run: aws configure"
+        log_error "Or set: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN"
+        exit 1
+    fi
+    
+    CALLER_IDENTITY=$(aws sts get-caller-identity --output json)
+    ACCOUNT_ID=$(echo "$CALLER_IDENTITY" | jq -r '.Account')
+    USER_ARN=$(echo "$CALLER_IDENTITY" | jq -r '.Arn')
+    
+    log_success "Authenticated as: $USER_ARN"
+    log_info "Account ID: $ACCOUNT_ID"
+}
+
 setup_cluster_connection() {
     print_header "Setting up cluster connection"
     
@@ -77,11 +96,22 @@ setup_cluster_connection() {
     log_info "Cluster: $CLUSTER_NAME"
     log_info "Region: $AWS_REGION"
     
-    log_info "Updating kubeconfig..."
-    aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+    log_info "Updating kubeconfig with fresh credentials..."
+    aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME" --alias "$CLUSTER_NAME"
     
     log_info "Verifying cluster connection..."
-    kubectl cluster-info
+    if ! kubectl cluster-info &>/dev/null; then
+        log_error "Failed to connect to cluster. Possible issues:"
+        log_error "1. AWS credentials don't have EKS permissions"
+        log_error "2. Cluster security group rules are blocking access"
+        log_error "3. IAM role/user not mapped in aws-auth ConfigMap"
+        
+        log_info "Attempting to diagnose..."
+        kubectl cluster-info 2>&1 || true
+        exit 1
+    fi
+    
+    kubectl get nodes -o wide || log_warning "Could not list nodes (permissions issue)"
     
     log_success "Cluster connection established"
 }
@@ -233,7 +263,10 @@ main() {
     # Confirm action
     confirm_action "${1:-}"
     
-    # Setup
+    # Validate AWS credentials first
+    check_aws_credentials
+    
+    # Setup cluster connection
     setup_cluster_connection
     
     # Execute cleanup steps
