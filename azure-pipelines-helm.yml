@@ -10,89 +10,39 @@ parameters:
 
 variables:
   AWS_REGION: us-east-1
-  TF_DIR: terraform
+  AWS_SERVICE_CONNECTION: aws-cred
 
 stages:
   - stage: DeployPlatform
     displayName: Deploy Platform
     jobs:
       - job: Deploy
-        displayName: Deploy Controllers & Tools
+        displayName: Deploy Platform Tools
         pool:
           name: aws-self-hosted
 
         steps:
           - checkout: self
 
-          - task: Bash@3
-            displayName: Get Infrastructure Info from AWS
-            name: outputs
+          - task: AWSShellScript@1
+            displayName: Get Infrastructure Info
+            name: info
             inputs:
-              targetType: inline
-              script: |
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
                 set -euo pipefail
                 
-                # Get EKS cluster name from AWS
-                CLUSTER_NAME=$(aws eks list-clusters --region $(AWS_REGION) --query 'clusters[0]' --output text)
-                echo "Found EKS Cluster: $CLUSTER_NAME"
-                
-                # Get AWS Account ID
                 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-                echo "AWS Account ID: $ACCOUNT_ID"
+                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
+                NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName, 'nlb-tg')].TargetGroupArn" --output text | head -1)
                 
-                # Get NLB information by tags
-                NLB_ARN=$(aws elbv2 describe-load-balancers \
-                  --region $(AWS_REGION) \
-                  --query "LoadBalancers[?contains(LoadBalancerName, 'platform-nlb')].LoadBalancerArn" \
-                  --output text | head -1)
+                aws eks update-kubeconfig --region $(AWS_REGION) --name ${CLUSTER_NAME}
                 
-                if [ -z "$NLB_ARN" ]; then
-                  echo "Warning: NLB not found by name, searching by type..."
-                  NLB_ARN=$(aws elbv2 describe-load-balancers \
-                    --region $(AWS_REGION) \
-                    --query "LoadBalancers[?Type=='network'].LoadBalancerArn" \
-                    --output text | head -1)
-                fi
-                
-                echo "NLB ARN: $NLB_ARN"
-                
-                # Get NLB DNS name
-                NLB_DNS=$(aws elbv2 describe-load-balancers \
-                  --region $(AWS_REGION) \
-                  --load-balancer-arns "$NLB_ARN" \
-                  --query 'LoadBalancers[0].DNSName' \
-                  --output text)
-                
-                echo "NLB DNS: $NLB_DNS"
-                
-                # Get NLB target group ARN
-                NLB_TG_ARN=$(aws elbv2 describe-target-groups \
-                  --region $(AWS_REGION) \
-                  --load-balancer-arn "$NLB_ARN" \
-                  --query 'TargetGroups[0].TargetGroupArn' \
-                  --output text)
-                
-                echo "NLB Target Group ARN: $NLB_TG_ARN"
-                
-                # Set pipeline variables
-                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER_NAME"
-                echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]$NLB_TG_ARN"
-                echo "##vso[task.setvariable variable=NLB_DNS;isOutput=true]$NLB_DNS"
-                echo "##vso[task.setvariable variable=ACCOUNT_ID;isOutput=true]$ACCOUNT_ID"
-                echo "##vso[task.setvariable variable=NLB_ARN;isOutput=true]$NLB_ARN"
-
-          - task: Bash@3
-            displayName: Configure kubectl
-            inputs:
-              targetType: inline
-              script: |
-                aws eks update-kubeconfig --region $(AWS_REGION) --name $(outputs.CLUSTER_NAME)
-                kubectl get nodes
-
-          - task: HelmInstaller@1
-            displayName: Install Helm
-            inputs:
-              helmVersionToInstall: 3.14.0
+                echo "##vso[task.setvariable variable=ACCOUNT_ID;isOutput=true]${ACCOUNT_ID}"
+                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]${CLUSTER_NAME}"
+                echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]${NLB_TG_ARN}"
 
           - task: Bash@3
             displayName: Add Helm Repos
@@ -119,7 +69,7 @@ stages:
                   name: aws-load-balancer-controller
                   namespace: kube-system
                   annotations:
-                    eks.amazonaws.com/role-arn: arn:aws:iam::$(outputs.ACCOUNT_ID):role/$(outputs.CLUSTER_NAME)-aws_load_balancer_controller-irsa
+                    eks.amazonaws.com/role-arn: arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa
 
           - task: HelmDeploy@1
             displayName: Deploy AWS Load Balancer Controller
@@ -133,25 +83,11 @@ stages:
               install: true
               waitForExecution: true
               arguments: |
-                --set clusterName=$(outputs.CLUSTER_NAME)
+                --set clusterName=$(info.CLUSTER_NAME)
                 --set serviceAccount.create=false
                 --set serviceAccount.name=aws-load-balancer-controller
                 --set region=$(AWS_REGION)
-                --timeout 15m
-
-          - task: Kubernetes@1
-            displayName: Verify AWS LBC Deployment
-            inputs:
-              connectionType: None
-              command: get
-              arguments: deployment aws-load-balancer-controller -n kube-system
-
-          - task: Kubernetes@1
-            displayName: Verify TargetGroupBindings CRD
-            inputs:
-              connectionType: None
-              command: get
-              arguments: crd targetgroupbindings.elbv2.k8s.aws
+                --timeout 10m
 
           - task: HelmDeploy@1
             displayName: Deploy NGINX Ingress
@@ -167,14 +103,10 @@ stages:
               arguments: |
                 --create-namespace
                 --set controller.service.type=ClusterIP
-                --set-string controller.tolerations[0].key=platform
-                --set-string controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set-string controller.tolerations[0].effect=NoSchedule
-                --set-string controller.admissionWebhooks.patch.tolerations[0].key=platform
-                --set-string controller.admissionWebhooks.patch.tolerations[0].operator=Equal
-                --set-string controller.admissionWebhooks.patch.tolerations[0].value=true
-                --set-string controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
+                --set controller.tolerations[0].key=platform
+                --set controller.tolerations[0].operator=Equal
+                --set controller.tolerations[0].value=true
+                --set controller.tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: Kubernetes@1
@@ -190,21 +122,14 @@ stages:
                   name: ingress-nlb-tgb
                   namespace: ingress-nginx
                 spec:
-                  targetGroupARN: $(outputs.NLB_TG_ARN)
+                  targetGroupARN: $(info.NLB_TG_ARN)
                   targetType: ip
                   serviceRef:
                     name: ingress-nginx-controller
                     port: 80
 
-          - task: Kubernetes@1
-            displayName: Get TargetGroupBinding Status
-            inputs:
-              connectionType: None
-              command: get
-              arguments: targetgroupbinding ingress-nlb-tgb -n ingress-nginx
-
           - task: HelmDeploy@1
-            displayName: Deploy Argo CD
+            displayName: Deploy ArgoCD
             inputs:
               connectionType: None
               namespace: argocd
@@ -217,44 +142,11 @@ stages:
               arguments: |
                 --create-namespace
                 --set server.service.type=ClusterIP
-                --set server.ingress.enabled=false
-                --set-string server.tolerations[0].key=platform
-                --set-string server.tolerations[0].operator=Equal
-                --set-string server.tolerations[0].value=true
-                --set-string server.tolerations[0].effect=NoSchedule
-                --set-string controller.tolerations[0].key=platform
-                --set-string controller.tolerations[0].operator=Equal
-                --set-string controller.tolerations[0].value=true
-                --set-string controller.tolerations[0].effect=NoSchedule
-                --set-string repoServer.tolerations[0].key=platform
-                --set-string repoServer.tolerations[0].operator=Equal
-                --set-string repoServer.tolerations[0].value=true
-                --set-string repoServer.tolerations[0].effect=NoSchedule
-                --set-string redis.tolerations[0].key=platform
-                --set-string redis.tolerations[0].operator=Equal
-                --set-string redis.tolerations[0].value=true
-                --set-string redis.tolerations[0].effect=NoSchedule
+                --set server.tolerations[0].key=platform
+                --set server.tolerations[0].operator=Equal
+                --set server.tolerations[0].value=true
+                --set server.tolerations[0].effect=NoSchedule
                 --timeout 10m
-
-          - task: Kubernetes@1
-            displayName: Apply Ingress Routes
-            inputs:
-              connectionType: None
-              command: apply
-              useConfigurationFile: true
-              configurationType: filePath
-              configuration: k8s-config/platform-ingress.yaml
-
-          - task: Bash@3
-            displayName: Get ArgoCD Access Info
-            inputs:
-              targetType: inline
-              script: |
-                echo "NLB DNS: $(outputs.NLB_DNS)"
-                echo "Argo CD: http://$(outputs.NLB_DNS)/api/argocd"
-                echo "Username: admin"
-                echo -n "Password: "
-                kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
           - task: HelmDeploy@1
             displayName: Deploy External Secrets
@@ -270,10 +162,10 @@ stages:
               arguments: |
                 --create-namespace
                 --set installCRDs=true
-                --set-string tolerations[0].key=platform
-                --set-string tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set-string tolerations[0].effect=NoSchedule
+                --set tolerations[0].key=platform
+                --set tolerations[0].operator=Equal
+                --set tolerations[0].value=true
+                --set tolerations[0].effect=NoSchedule
                 --timeout 10m
 
           - task: HelmDeploy@1
@@ -289,8 +181,34 @@ stages:
               waitForExecution: true
               arguments: |
                 --create-namespace
-                --set-string tolerations[0].key=platform
-                --set-string tolerations[0].operator=Equal
-                --set-string tolerations[0].value=true
-                --set-string tolerations[0].effect=NoSchedule
-                --timeout 15m
+                --set tolerations[0].key=platform
+                --set tolerations[0].operator=Equal
+                --set tolerations[0].value=true
+                --set tolerations[0].effect=NoSchedule
+                --timeout 10m
+
+          - task: Kubernetes@1
+            displayName: Apply Platform Ingress
+            inputs:
+              connectionType: None
+              command: apply
+              useConfigurationFile: true
+              configurationType: filePath
+              configuration: k8s-config/platform-ingress.yaml
+
+          - task: Kubernetes@1
+            displayName: Get ArgoCD Secret
+            name: argocd
+            inputs:
+              connectionType: None
+              command: get
+              arguments: secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}'
+              outputFormat: json
+
+          - task: Bash@3
+            displayName: Display Access Info
+            inputs:
+              targetType: inline
+              script: |
+                echo "ArgoCD Username: admin"
+                echo "ArgoCD Password: $(echo '$(argocd.KubectlOutput)' | base64 -d)"
