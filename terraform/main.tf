@@ -63,7 +63,7 @@ module "irsa" {
     aws_load_balancer_controller = {
       namespace            = "kube-system"
       service_account_name = "aws-load-balancer-controller"
-      policy_arns          = ["arn:aws:iam::aws:policy/AWSLoadBalancerControllerIAMPolicy"]
+      policy_arns          = ["arn:aws:iam::430118836758:policy/AWSLoadBalancerControllerIAMPolicy"]
     }
   }
   tags = var.tags
