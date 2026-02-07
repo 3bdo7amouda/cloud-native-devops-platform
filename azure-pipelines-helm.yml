@@ -75,6 +75,31 @@ stages:
                 helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
+          - task: Bash@3
+            displayName: Cleanup stuck Helm releases
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              AWS_SESSION_TOKEN: $(AWS_SESSION_TOKEN)
+              AWS_DEFAULT_REGION: $(AWS_REGION)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                
+                echo "Checking for stuck Helm releases..."
+                
+                # Clean up ingress-nginx if stuck
+                if kubectl get secret -n ingress-nginx 2>/dev/null | grep -q "sh.helm.release"; then
+                  RELEASE_STATUS=$(helm list -n ingress-nginx -o json | jq -r '.[0].status // "none"')
+                  if [ "$RELEASE_STATUS" == "none" ] || [ "$RELEASE_STATUS" == "pending-install" ]; then
+                    echo "Found stuck ingress-nginx release, cleaning up..."
+                    kubectl delete secret -n ingress-nginx -l owner=helm 2>/dev/null || true
+                  fi
+                fi
+                
+                echo "Cleanup complete"
+
           - task: HelmDeploy@1
             displayName: Install NGINX Ingress Controller
             env:
@@ -96,11 +121,11 @@ stages:
                 --timeout 10m
                 --set controller.tolerations[0].key=platform
                 --set controller.tolerations[0].operator=Equal
-                --set controller.tolerations[0].value=true
+                --set controller.tolerations[0].value="true"
                 --set controller.tolerations[0].effect=NoSchedule
                 --set controller.admissionWebhooks.patch.tolerations[0].key=platform
                 --set controller.admissionWebhooks.patch.tolerations[0].operator=Equal
-                --set controller.admissionWebhooks.patch.tolerations[0].value=true
+                --set controller.admissionWebhooks.patch.tolerations[0].value="true"
                 --set controller.admissionWebhooks.patch.tolerations[0].effect=NoSchedule
                 --set controller.service.type=LoadBalancer
                 --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-target-group-arn"=$(NLB_TG_ARN)
@@ -172,15 +197,15 @@ stages:
                 --timeout 10m
                 --set tolerations[0].key=platform
                 --set tolerations[0].operator=Equal
-                --set tolerations[0].value=true
+                --set tolerations[0].value="true"
                 --set tolerations[0].effect=NoSchedule
                 --set webhook.tolerations[0].key=platform
                 --set webhook.tolerations[0].operator=Equal
-                --set webhook.tolerations[0].value=true
+                --set webhook.tolerations[0].value="true"
                 --set webhook.tolerations[0].effect=NoSchedule
                 --set certController.tolerations[0].key=platform
                 --set certController.tolerations[0].operator=Equal
-                --set certController.tolerations[0].value=true
+                --set certController.tolerations[0].value="true"
                 --set certController.tolerations[0].effect=NoSchedule
                 --set installCRDs=true
                 --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::$(AWS_ACCOUNT_ID):role/$(CLUSTER_NAME)-external_secrets-irsa
@@ -206,19 +231,19 @@ stages:
                 --timeout 10m
                 --set controller.tolerations[0].key=platform
                 --set controller.tolerations[0].operator=Equal
-                --set controller.tolerations[0].value=true
+                --set controller.tolerations[0].value="true"
                 --set controller.tolerations[0].effect=NoSchedule
                 --set server.tolerations[0].key=platform
                 --set server.tolerations[0].operator=Equal
-                --set server.tolerations[0].value=true
+                --set server.tolerations[0].value="true"
                 --set server.tolerations[0].effect=NoSchedule
                 --set repoServer.tolerations[0].key=platform
                 --set repoServer.tolerations[0].operator=Equal
-                --set repoServer.tolerations[0].value=true
+                --set repoServer.tolerations[0].value="true"
                 --set repoServer.tolerations[0].effect=NoSchedule
                 --set redis.tolerations[0].key=platform
                 --set redis.tolerations[0].operator=Equal
-                --set redis.tolerations[0].value=true
+                --set redis.tolerations[0].value="true"
                 --set redis.tolerations[0].effect=NoSchedule
                 --set server.ingress.enabled=true
                 --set server.ingress.ingressClassName=nginx
@@ -244,11 +269,11 @@ stages:
                 --timeout 15m
                 --set tolerations[0].key=platform
                 --set tolerations[0].operator=Equal
-                --set tolerations[0].value=true
+                --set tolerations[0].value="true"
                 --set tolerations[0].effect=NoSchedule
                 --set postgresql.primary.tolerations[0].key=platform
                 --set postgresql.primary.tolerations[0].operator=Equal
-                --set postgresql.primary.tolerations[0].value=true
+                --set postgresql.primary.tolerations[0].value="true"
                 --set postgresql.primary.tolerations[0].effect=NoSchedule
                 --set ingress.enabled=true
                 --set ingress.ingressClassName=nginx
