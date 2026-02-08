@@ -49,8 +49,35 @@ stages:
         script: |
           set -e
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo add eks https://aws.github.io/eks-charts
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo update
+
+    - task: AWSShellScript@1
+      displayName: Install AWS Load Balancer Controller
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(AWS_REGION)
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          CLUSTER="${{ parameters.env }}-eks"
+          aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1 || \
+            CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text)
+
+          VPC_ID=$(aws eks describe-cluster --name "$CLUSTER" --query 'cluster.resourcesVpcConfig.vpcId' --output text)
+          ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+          ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/${CLUSTER}-aws_load_balancer_controller-irsa"
+
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system \
+            --set clusterName="$CLUSTER" \
+            --set region="$(AWS_REGION)" \
+            --set vpcId="$VPC_ID" \
+            --set serviceAccount.create=true \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set serviceAccount.annotations."eks\\.amazonaws\\.com/role-arn"="$ROLE_ARN" \
+            --wait --timeout 10m
 
     - task: HelmDeploy@1
       displayName: Deploy NGINX Ingress
@@ -66,10 +93,7 @@ stages:
         arguments: >-
           --create-namespace
           --version 4.14.3
-          --set controller.service.type=LoadBalancer
-          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"="nlb"
-          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type"="ip"
-          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"="internal"
+          --set controller.service.type=ClusterIP
           --set controller.ingressClassResource.name=nginx
           --timeout 10m
 
@@ -80,8 +104,17 @@ stages:
         script: |
           kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
 
+    - task: Bash@3
+      displayName: Apply ALB Ingress for NGINX
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          ALB_NAME="${{ parameters.env }}-alb"
+          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/alb-ingress.yaml | kubectl apply -f -
+
     - task: AWSShellScript@1
-      displayName: Bind Terraform NLB TG to NGINX
+      displayName: Link Terraform NLB to ALB
       inputs:
         awsCredentials: $(AWS_SERVICE_CONNECTION)
         regionName: $(AWS_REGION)
@@ -89,12 +122,27 @@ stages:
         inlineScript: |
           set -euo pipefail
           TG_NAME="${{ parameters.env }}-nlb-tg"
+          ALB_NAME="${{ parameters.env }}-alb"
+
           TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
           if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
             echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2
             exit 1
           fi
-          sed "s|__TARGET_GROUP_ARN__|$TG_ARN|" k8s-config/ingress-nlb-tgb.yaml | kubectl apply -f -
+
+          for i in $(seq 1 40); do
+            ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
+            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ]; then
+            echo "ALB $ALB_NAME not found in $(AWS_REGION)" >&2
+            exit 1
+          fi
+
+          aws elbv2 register-targets --target-group-arn "$TG_ARN" --targets Id="$ALB_ARN"
 
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD

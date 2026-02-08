@@ -243,7 +243,7 @@ resource "aws_lb_target_group" "nlb" {
   name        = "${var.name_prefix}-nlb-tg"
   port        = 80
   protocol    = "TCP"
-  target_type = "ip"
+  target_type = "alb"
   vpc_id      = var.vpc_id
 
   health_check {
