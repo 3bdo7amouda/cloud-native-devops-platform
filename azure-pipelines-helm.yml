@@ -80,6 +80,22 @@ stages:
         script: |
           kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
 
+    - task: AWSShellScript@1
+      displayName: Bind Terraform NLB TG to NGINX
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(AWS_REGION)
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          TG_NAME="${{ parameters.env }}-nlb-tg"
+          TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
+          if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
+            echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2
+            exit 1
+          fi
+          sed "s|__TARGET_GROUP_ARN__|$TG_ARN|" k8s-config/ingress-nlb-tgb.yaml | kubectl apply -f -
+
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD
       inputs:

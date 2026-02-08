@@ -14,7 +14,7 @@ tags = {
 vpc_id   = "vpc-0e98d37ab3160b45f"
 vpc_cidr = "172.30.0.0/16"
 
-azs = ["us-east-1a", "us-east-1b"]
+azs = ["us-east-1a", "us-east-1c"]
 
 public_subnet_cidrs  = ["172.30.3.0/24"]                   
 private_subnet_cidrs = ["172.30.11.0/24", "172.30.12.0/24"]
