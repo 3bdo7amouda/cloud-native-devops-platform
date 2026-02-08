@@ -1,6 +1,8 @@
 sonarProperties:
   sonar.web.context: /api/sonarqube
 
+monitoringPasscode: "3bdo7amouda"
+
 service:
   type: ClusterIP
 
