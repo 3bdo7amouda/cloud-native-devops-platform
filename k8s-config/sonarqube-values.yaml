@@ -3,6 +3,9 @@ sonarProperties:
 
 monitoringPasscode: "3bdo7amouda"
 
+community:
+  enabled: true
+
 service:
   type: ClusterIP
 
