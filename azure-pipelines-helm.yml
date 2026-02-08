@@ -82,6 +82,17 @@ stages:
 
           kubectl -n kube-system wait --for=condition=Available deployment/aws-load-balancer-controller --timeout=5m
 
+    - task: Bash@3
+      displayName: Remove AWS LB Controller Webhook
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          kubectl -n kube-system delete service aws-load-balancer-webhook-service --ignore-not-found
+          kubectl -n kube-system delete secret aws-load-balancer-webhook-tls --ignore-not-found
+          kubectl delete mutatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+          kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+
     - task: HelmDeploy@1
       displayName: Deploy NGINX Ingress
       inputs:
