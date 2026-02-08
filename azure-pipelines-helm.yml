@@ -51,6 +51,7 @@ stages:
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
           helm repo add eks https://aws.github.io/eks-charts
           helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
           helm repo update
 
     - task: AWSShellScript@1
@@ -177,6 +178,22 @@ stages:
           --set configs.params.server.basehref=/api/argocd
           --set configs.params.server.rootpath=/api/argocd
           --set configs.params.server.insecure=true
+          --timeout 10m
+
+    - task: HelmDeploy@1
+      displayName: Deploy SonarQube
+      inputs:
+        connectionType: None
+        namespace: sonarqube
+        command: upgrade
+        chartType: Name
+        chartName: sonarqube/sonarqube
+        releaseName: sonarqube
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          -f k8s-config/sonarqube-values.yaml
           --timeout 10m
 
     - task: Bash@3

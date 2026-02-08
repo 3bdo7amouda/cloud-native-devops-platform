@@ -1,0 +1,8 @@
+sonarProperties:
+  sonar.web.context: /api/sonarqube
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
