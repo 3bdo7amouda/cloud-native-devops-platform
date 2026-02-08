@@ -13,201 +13,125 @@ variables:
   AWS_SERVICE_CONNECTION: aws-cred
 
 stages:
-  - stage: DeployPlatform
-    displayName: Deploy Platform
-    jobs:
-      - job: Deploy
-        displayName: Deploy Platform Tools
-        pool:
-          name: aws-self-hosted
+- stage: DeployPlatform
+  displayName: Deploy Platform
+  jobs:
+  - job: Deploy
+    displayName: Deploy Platform Tools
+    pool:
+      name: aws-self-hosted
 
-        steps:
-          - checkout: self
+    steps:
+    - checkout: self
 
-          - task: AWSShellScript@1
-            displayName: Get Infrastructure Info
-            name: info
-            inputs:
-              awsCredentials: $(AWS_SERVICE_CONNECTION)
-              regionName: $(AWS_REGION)
-              scriptType: inline
-              inlineScript: |
-                set -euo pipefail
-                
-                echo "Fetching infrastructure information for environment: ${{ parameters.env }}"
+    - task: AWSShellScript@1
+      displayName: Get Infrastructure Info
+      name: info
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(AWS_REGION)
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
 
-                # Determine Cluster Name
-                # Try strict naming convention first: {env}-eks
-                CANDIDATE_CLUSTER="${{ parameters.env }}-eks"
-                if aws eks describe-cluster --name "${CANDIDATE_CLUSTER}" >/dev/null 2>&1; then
-                  CLUSTER_NAME=${CANDIDATE_CLUSTER}
-                else
-                  echo "Cluster ${CANDIDATE_CLUSTER} not found. Falling back to listing clusters..."
-                  CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
-                fi
-                echo "Detected Cluster: ${CLUSTER_NAME}"
+          CLUSTER="${{ parameters.env }}-eks"
+          aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1 || CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text)
 
-                ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-                
-                # Determine NLB Target Group ARN
-                # Try strict naming convention first: {env}-nlb-tg
-                # Note: The terraform module naming is usually ${name_prefix}-nlb-tg
-                TG_NAME="${{ parameters.env }}-nlb-tg"
-                NLB_TG_ARN=$(aws elbv2 describe-target-groups --names "${TG_NAME}" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || true)
-                
-                if [[ -z "${NLB_TG_ARN}" ]]; then
-                   echo "Target Group ${TG_NAME} not found by name. Searching for any TG containing 'nlb-tg'..."
-                   NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName, 'nlb-tg')].TargetGroupArn" --output text | head -1)
-                fi
-                
-                if [[ -z "${NLB_TG_ARN}" || "${NLB_TG_ARN}" == "None" ]]; then
-                   echo "ERROR: Could not find NLB Target Group."
-                   exit 1
-                fi
-                echo "Detected NLB Target Group: ${NLB_TG_ARN}"
+          TG_NAME="${{ parameters.env }}-nlb-tg"
+          TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || true)
 
-                # VPC ID (Assuming single VPC context or derivation from cluster/TG is consistent)
-                VPC_ID=$(aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text)
-                
-                # Update kubeconfig
-                aws eks update-kubeconfig --region $(AWS_REGION) --name ${CLUSTER_NAME}
-                
-                # Output variables for next steps
-                echo "##vso[task.setvariable variable=ACCOUNT_ID;isOutput=true]${ACCOUNT_ID}"
-                echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]${CLUSTER_NAME}"
-                echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]${NLB_TG_ARN}"
-                echo "##vso[task.setvariable variable=VPC_ID;isOutput=true]${VPC_ID}"
+          if [[ -z "$TG_ARN" || "$TG_ARN" == "None" ]]; then
+            TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName,'nlb-tg')].TargetGroupArn" --output text | head -1)
+          fi
 
-          - task: Bash@3
-            displayName: Add Helm Repos
-            inputs:
-              targetType: inline
-              script: |
-                helm repo add eks https://aws.github.io/eks-charts
-                helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-                helm repo add argo https://argoproj.github.io/argo-helm
-                helm repo add external-secrets https://charts.external-secrets.io
-                helm repo update
+          if [[ -z "$TG_ARN" ]]; then
+            echo "ERROR: Legacy TG not found"
+            exit 1
+          fi
 
-          - task: Bash@3
-            displayName: Create AWS LBC ServiceAccount
-            inputs:
-              targetType: inline
-              script: |
-                # Create ServiceAccount with correct IRSA annotation
-                sed "s|ROLE_ARN_PLACEHOLDER|arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa|g" \
-                  k8s-config/aws-lbc-serviceaccount.yaml | kubectl apply -f -
+          aws eks update-kubeconfig --region $(AWS_REGION) --name $CLUSTER
 
-          - task: HelmDeploy@1
-            displayName: Deploy AWS Load Balancer Controller
-            inputs:
-              connectionType: None
-              namespace: kube-system
-              command: upgrade
-              chartType: Name
-              chartName: eks/aws-load-balancer-controller
-              releaseName: aws-load-balancer-controller
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --set clusterName=$(info.CLUSTER_NAME)
-                --set serviceAccount.create=false
-                --set serviceAccount.name=aws-load-balancer-controller
-                --set region=$(AWS_REGION)
-                --set vpcId=$(info.VPC_ID)
-                --timeout 10m
+          echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER"
+          echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]$TG_ARN"
 
-          - task: Bash@3
-            displayName: Disable AWS LBC Validating Webhook
-            inputs:
-              targetType: inline
-              script: |
-                set -e
-                kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+    - task: Bash@3
+      displayName: Add Helm Repos
+      inputs:
+        targetType: inline
+        script: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
 
-          - task: HelmDeploy@1
-            displayName: Deploy NGINX Ingress
-            inputs:
-              connectionType: None
-              namespace: ingress-nginx
-              command: upgrade
-              chartType: Name
-              chartName: ingress-nginx/ingress-nginx
-              releaseName: ingress-nginx
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --version 4.14.3
-                --set controller.service.type=NodePort
-                --set controller.ingressClassResource.name=nginx
-                --timeout 10m
+    - task: HelmDeploy@1
+      displayName: Deploy NGINX Ingress (AWS NLB)
+      inputs:
+        connectionType: None
+        namespace: ingress-nginx
+        command: upgrade
+        chartType: Name
+        chartName: ingress-nginx/ingress-nginx
+        releaseName: ingress-nginx
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          --version 4.14.3
+          --set controller.service.type=LoadBalancer
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"="nlb"
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-nlb-target-type"="ip"
+          --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-scheme"="internal"
+          --set controller.ingressClassResource.name=nginx
+          --timeout 10m
 
-          - task: Bash@3
-            displayName: Verify ingress-nginx controller is running
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-                kubectl -n ingress-nginx get pods
-                kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
+    - task: Bash@3
+      displayName: Wait for NGINX
+      inputs:
+        targetType: inline
+        script: |
+          kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
 
-          - task: Bash@3
-            displayName: Apply TargetGroupBinding (NLB TG -> ingress-nginx svc)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
+    - task: Bash@3
+      displayName: Attach NGINX NLB to Legacy Target Group
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          TG=$(info.NLB_TG_ARN)
 
-                if [[ -z "$(info.NLB_TG_ARN)" ]]; then
-                  echo "ERROR: info.NLB_TG_ARN is empty"
-                  exit 1
-                fi
-                
-                echo "Applying TargetGroupBinding for TG: $(info.NLB_TG_ARN)"
-                sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
+          echo "Discovering NGINX NLB IPs..."
+          IPS=$(aws ec2 describe-network-interfaces \
+            --filters "Name=description,Values=ELB net/*" \
+            --query "NetworkInterfaces[*].PrivateIpAddress" \
+            --output text)
 
-                sleep 5
-                kubectl -n ingress-nginx get targetgroupbinding ingress-nlb-tgb -o wide
-                kubectl -n ingress-nginx describe targetgroupbinding ingress-nlb-tgb | sed -n '/Events/,$p'
+          for IP in $IPS; do
+            aws elbv2 register-targets --target-group-arn $TG --targets Id=$IP,Port=80
+          done
 
-          - task: HelmDeploy@1
-            displayName: Deploy ArgoCD
-            inputs:
-              connectionType: None
-              namespace: argocd
-              command: upgrade
-              chartType: Name
-              chartName: argo/argo-cd
-              releaseName: argocd
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --set server.service.type=ClusterIP
-                --timeout 10m
+    - task: HelmDeploy@1
+      displayName: Deploy ArgoCD
+      inputs:
+        connectionType: None
+        namespace: argocd
+        command: upgrade
+        chartType: Name
+        chartName: argo/argo-cd
+        releaseName: argocd
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          --set server.service.type=ClusterIP
+          --set configs.params.server.basehref=/api/argocd
+          --set configs.params.server.rootpath=/api/argocd
+          --timeout 10m
 
-          - task: HelmDeploy@1
-            displayName: Deploy External Secrets
-            inputs:
-              connectionType: None
-              namespace: external-secrets
-              command: upgrade
-              chartType: Name
-              chartName: external-secrets/external-secrets
-              releaseName: external-secrets
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --set installCRDs=true
-                --timeout 10m
-
-          - task: Kubernetes@1
-            displayName: Apply Platform Ingress
-            inputs:
-              connectionType: None
-              command: apply
-              useConfigurationFile: true
-              configurationType: filePath
-              configuration: k8s-config/platform-ingress.yaml
+    - task: Kubernetes@1
+      displayName: Apply Argo Ingress
+      inputs:
+        connectionType: None
+        command: apply
+        useConfigurationFile: true
+        configurationType: filePath
+        configuration: k8s-config/argocd-ingress.yaml
