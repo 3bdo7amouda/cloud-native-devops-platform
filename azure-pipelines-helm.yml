@@ -134,4 +134,4 @@ stages:
         command: apply
         useConfigurationFile: true
         configurationType: filePath
-        configuration: k8s-config/argocd-ingress.yaml
+        configuration: k8s-config/platform-ingress.yaml
