@@ -186,7 +186,7 @@ resource "aws_apigatewayv2_integration" "this" {
   api_id             = aws_apigatewayv2_api.this[0].id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri     = aws_lb.this[0].dns_name
+  integration_uri    = aws_lb_listener.nlb[0].arn
 
   connection_type = "VPC_LINK"
   connection_id   = aws_apigatewayv2_vpc_link.this[0].id
