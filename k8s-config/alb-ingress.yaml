@@ -21,6 +21,13 @@ spec:
   rules:
   - http:
       paths:
+      - path: /healthz
+        pathType: Prefix
+        backend:
+          service:
+            name: healthz
+            port:
+              number: 80
       - path: /
         pathType: Prefix
         backend:
