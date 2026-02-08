@@ -130,15 +130,16 @@ stages:
             exit 1
           fi
 
-          for i in $(seq 1 40); do
+          for i in $(seq 1 60); do
             ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
-            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ]; then
+            ALB_STATE=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
+            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_STATE" = "active" ]; then
               break
             fi
             sleep 15
           done
-          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ]; then
-            echo "ALB $ALB_NAME not found in $(AWS_REGION)" >&2
+          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ] || [ "$ALB_STATE" != "active" ]; then
+            echo "ALB $ALB_NAME not active in $(AWS_REGION) (state: ${ALB_STATE:-unknown})" >&2
             exit 1
           fi
 
