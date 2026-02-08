@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
 spec:
   type: ExternalName
-  externalName: sonarqube.sonarqube.svc.cluster.local
+  externalName: sonarqube-sonarqube.sonarqube.svc.cluster.local
   ports:
   - name: http
     port: 9000
