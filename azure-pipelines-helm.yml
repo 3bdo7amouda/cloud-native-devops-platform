@@ -52,6 +52,7 @@ stages:
           helm repo add eks https://aws.github.io/eks-charts
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
+          helm repo add external-secrets https://charts.external-secrets.io
           helm repo update
 
     - task: AWSShellScript@1
@@ -110,6 +111,22 @@ stages:
           --version 4.14.3
           --set controller.service.type=ClusterIP
           --set controller.ingressClassResource.name=nginx
+          --timeout 10m
+
+    - task: HelmDeploy@1
+      displayName: Deploy External Secrets
+      inputs:
+        connectionType: None
+        namespace: external-secrets
+        command: upgrade
+        chartType: Name
+        chartName: external-secrets/external-secrets
+        releaseName: external-secrets
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          -f k8s-config/external-secrets-values.yaml
           --timeout 10m
 
     - task: Bash@3
