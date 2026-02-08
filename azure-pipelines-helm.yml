@@ -175,9 +175,9 @@ stages:
         arguments: >-
           --create-namespace
           --set server.service.type=ClusterIP
-          --set configs.params.server.basehref=/api/argocd
-          --set configs.params.server.rootpath=/api/argocd
-          --set configs.params.server.insecure=true
+          --set configs.params."server.basehref"=/api/argocd
+          --set configs.params."server.rootpath"=/api/argocd
+          --set configs.params."server.insecure"=true
           --timeout 10m
 
     - task: HelmDeploy@1
