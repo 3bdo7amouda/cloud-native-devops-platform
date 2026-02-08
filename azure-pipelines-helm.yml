@@ -174,10 +174,7 @@ stages:
         waitForExecution: true
         arguments: >-
           --create-namespace
-          --set server.service.type=ClusterIP
-          --set configs.params."server.basehref"=/api/argocd
-          --set configs.params."server.rootpath"=/api/argocd
-          --set configs.params."server.insecure"=true
+          -f k8s-config/argocd-values.yaml
           --timeout 10m
 
     - task: HelmDeploy@1
