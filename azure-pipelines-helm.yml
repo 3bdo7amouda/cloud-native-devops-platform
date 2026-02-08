@@ -139,7 +139,7 @@ stages:
               arguments: >-
                 --create-namespace
                 --version 4.14.3
-                --set controller.service.type=ClusterIP
+                --set controller.service.type=NodePort
                 --set controller.ingressClassResource.name=nginx
                 --timeout 10m
 
