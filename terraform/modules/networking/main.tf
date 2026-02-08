@@ -186,7 +186,7 @@ resource "aws_apigatewayv2_integration" "this" {
   api_id             = aws_apigatewayv2_api.this[0].id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
-  integration_uri    = aws_lb_listener.nlb[0].arn
+  integration_uri     = aws_lb.this[0].dns_name
 
   connection_type = "VPC_LINK"
   connection_id   = aws_apigatewayv2_vpc_link.this[0].id
@@ -230,7 +230,7 @@ resource "aws_lb" "nlb" {
   name               = "${var.name_prefix}-nlb"
   internal           = true
   load_balancer_type = "network"
-  subnets            = [for s in aws_subnet.private : s.id]
+  subnets            = aws_subnet.private[*].id
 
   enable_deletion_protection       = false
   enable_cross_zone_load_balancing = true

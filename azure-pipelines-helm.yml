@@ -35,36 +35,25 @@ stages:
           set -euo pipefail
 
           CLUSTER="${{ parameters.env }}-eks"
-          aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1 || CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text)
-
-          TG_NAME="${{ parameters.env }}-nlb-tg"
-          TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || true)
-
-          if [[ -z "$TG_ARN" || "$TG_ARN" == "None" ]]; then
-            TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName,'nlb-tg')].TargetGroupArn" --output text | head -1)
-          fi
-
-          if [[ -z "$TG_ARN" ]]; then
-            echo "ERROR: Legacy TG not found"
-            exit 1
-          fi
+          aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1 || \
+            CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text)
 
           aws eks update-kubeconfig --region $(AWS_REGION) --name $CLUSTER
 
           echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]$CLUSTER"
-          echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]$TG_ARN"
 
     - task: Bash@3
       displayName: Add Helm Repos
       inputs:
         targetType: inline
         script: |
+          set -e
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo update
 
     - task: HelmDeploy@1
-      displayName: Deploy NGINX Ingress (AWS NLB)
+      displayName: Deploy NGINX Ingress
       inputs:
         connectionType: None
         namespace: ingress-nginx
@@ -85,29 +74,11 @@ stages:
           --timeout 10m
 
     - task: Bash@3
-      displayName: Wait for NGINX
+      displayName: Wait for NGINX Controller
       inputs:
         targetType: inline
         script: |
           kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
-
-    - task: Bash@3
-      displayName: Attach NGINX NLB to Legacy Target Group
-      inputs:
-        targetType: inline
-        script: |
-          set -euo pipefail
-          TG=$(info.NLB_TG_ARN)
-
-          echo "Discovering NGINX NLB IPs..."
-          IPS=$(aws ec2 describe-network-interfaces \
-            --filters "Name=description,Values=ELB net/*" \
-            --query "NetworkInterfaces[*].PrivateIpAddress" \
-            --output text)
-
-          for IP in $IPS; do
-            aws elbv2 register-targets --target-group-arn $TG --targets Id=$IP,Port=80
-          done
 
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD
@@ -127,11 +98,10 @@ stages:
           --set configs.params.server.rootpath=/api/argocd
           --timeout 10m
 
-    - task: Kubernetes@1
-      displayName: Apply Argo Ingress
+    - task: Bash@3
+      displayName: Apply Platform Ingress
       inputs:
-        connectionType: None
-        command: apply
-        useConfigurationFile: true
-        configurationType: filePath
-        configuration: k8s-config/platform-ingress.yaml
+        targetType: inline
+        script: |
+          kubectl apply -f k8s-config/platform-ingress.yaml
+          kubectl get ingress -A
