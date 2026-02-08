@@ -180,11 +180,3 @@ stages:
               useConfigurationFile: true
               configurationType: filePath
               configuration: k8s-config/platform-ingress.yaml
-
-          - task: Bash@3
-            displayName: Display Access Info
-            inputs:
-              targetType: inline
-              script: |
-                echo "ArgoCD Username: admin"
-                echo "ArgoCD Password: $(echo $(argocd.KubectlOutput) | base64 -d)"
