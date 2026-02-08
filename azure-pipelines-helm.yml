@@ -33,11 +33,46 @@ stages:
               scriptType: inline
               inlineScript: |
                 set -euo pipefail
+                
+                echo "Fetching infrastructure information for environment: ${{ parameters.env }}"
+
+                # Determine Cluster Name
+                # Try strict naming convention first: {env}-eks
+                CANDIDATE_CLUSTER="${{ parameters.env }}-eks"
+                if aws eks describe-cluster --name "${CANDIDATE_CLUSTER}" >/dev/null 2>&1; then
+                  CLUSTER_NAME=${CANDIDATE_CLUSTER}
+                else
+                  echo "Cluster ${CANDIDATE_CLUSTER} not found. Falling back to listing clusters..."
+                  CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
+                fi
+                echo "Detected Cluster: ${CLUSTER_NAME}"
+
                 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-                CLUSTER_NAME=$(aws eks list-clusters --query 'clusters[0]' --output text)
-                NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName, 'nlb-tg')].TargetGroupArn" --output text | head -1)
+                
+                # Determine NLB Target Group ARN
+                # Try strict naming convention first: {env}-nlb-tg
+                # Note: The terraform module naming is usually ${name_prefix}-nlb-tg
+                TG_NAME="${{ parameters.env }}-nlb-tg"
+                NLB_TG_ARN=$(aws elbv2 describe-target-groups --names "${TG_NAME}" --query "TargetGroups[0].TargetGroupArn" --output text 2>/dev/null || true)
+                
+                if [[ -z "${NLB_TG_ARN}" ]]; then
+                   echo "Target Group ${TG_NAME} not found by name. Searching for any TG containing 'nlb-tg'..."
+                   NLB_TG_ARN=$(aws elbv2 describe-target-groups --query "TargetGroups[?contains(TargetGroupName, 'nlb-tg')].TargetGroupArn" --output text | head -1)
+                fi
+                
+                if [[ -z "${NLB_TG_ARN}" || "${NLB_TG_ARN}" == "None" ]]; then
+                   echo "ERROR: Could not find NLB Target Group."
+                   exit 1
+                fi
+                echo "Detected NLB Target Group: ${NLB_TG_ARN}"
+
+                # VPC ID (Assuming single VPC context or derivation from cluster/TG is consistent)
                 VPC_ID=$(aws ec2 describe-vpcs --query "Vpcs[0].VpcId" --output text)
+                
+                # Update kubeconfig
                 aws eks update-kubeconfig --region $(AWS_REGION) --name ${CLUSTER_NAME}
+                
+                # Output variables for next steps
                 echo "##vso[task.setvariable variable=ACCOUNT_ID;isOutput=true]${ACCOUNT_ID}"
                 echo "##vso[task.setvariable variable=CLUSTER_NAME;isOutput=true]${CLUSTER_NAME}"
                 echo "##vso[task.setvariable variable=NLB_TG_ARN;isOutput=true]${NLB_TG_ARN}"
@@ -52,7 +87,6 @@ stages:
                 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
                 helm repo add argo https://argoproj.github.io/argo-helm
                 helm repo add external-secrets https://charts.external-secrets.io
-                helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
                 helm repo update
 
           - task: Bash@3
@@ -60,6 +94,7 @@ stages:
             inputs:
               targetType: inline
               script: |
+                # Create ServiceAccount with correct IRSA annotation
                 sed "s|ROLE_ARN_PLACEHOLDER|arn:aws:iam::$(info.ACCOUNT_ID):role/$(info.CLUSTER_NAME)-aws_load_balancer_controller-irsa|g" \
                   k8s-config/aws-lbc-serviceaccount.yaml | kubectl apply -f -
 
@@ -97,6 +132,7 @@ stages:
                 --create-namespace
                 --version 4.14.3
                 --set controller.service.type=ClusterIP
+                --set controller.ingressClassResource.name=nginx
                 --timeout 10m
 
           - task: Bash@3
@@ -119,9 +155,11 @@ stages:
                   echo "ERROR: info.NLB_TG_ARN is empty"
                   exit 1
                 fi
-
+                
+                echo "Applying TargetGroupBinding for TG: $(info.NLB_TG_ARN)"
                 sed "s|TG_ARN_PLACEHOLDER|$(info.NLB_TG_ARN)|g" k8s-config/targetgroup-binding.yaml | kubectl apply -f -
 
+                sleep 5
                 kubectl -n ingress-nginx get targetgroupbinding ingress-nlb-tgb -o wide
                 kubectl -n ingress-nginx describe targetgroupbinding ingress-nlb-tgb | sed -n '/Events/,$p'
 
@@ -156,21 +194,6 @@ stages:
                 --create-namespace
                 --set installCRDs=true
                 --timeout 10m
-
-          # - task: HelmDeploy@1
-          #   displayName: Deploy SonarQube
-          #   inputs:
-          #     connectionType: None
-          #     namespace: sonarqube
-          #     command: upgrade
-          #     chartType: Name
-          #     chartName: sonarqube/sonarqube
-          #     releaseName: sonarqube
-          #     install: true
-          #     waitForExecution: true
-          #     arguments: >-
-          #       --create-namespace
-          #       --timeout 10m
 
           - task: Kubernetes@1
             displayName: Apply Platform Ingress
