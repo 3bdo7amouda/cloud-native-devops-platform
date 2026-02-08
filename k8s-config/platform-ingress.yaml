@@ -19,25 +19,3 @@ spec:
             name: argocd-server
             port:
               number: 80
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: sonarqube-ingress
-  namespace: sonarqube
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  ingressClassName: nginx
-  rules:
-  - http:
-      paths:
-      - path: /api/sonarqube(/|$)(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: sonarqube-sonarqube
-            port:
-              number: 9000
