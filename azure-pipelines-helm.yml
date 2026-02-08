@@ -157,20 +157,20 @@ stages:
                 --set installCRDs=true
                 --timeout 10m
 
-          - task: HelmDeploy@1
-            displayName: Deploy SonarQube
-            inputs:
-              connectionType: None
-              namespace: sonarqube
-              command: upgrade
-              chartType: Name
-              chartName: sonarqube/sonarqube
-              releaseName: sonarqube
-              install: true
-              waitForExecution: true
-              arguments: >-
-                --create-namespace
-                --timeout 10m
+          # - task: HelmDeploy@1
+          #   displayName: Deploy SonarQube
+          #   inputs:
+          #     connectionType: None
+          #     namespace: sonarqube
+          #     command: upgrade
+          #     chartType: Name
+          #     chartName: sonarqube/sonarqube
+          #     releaseName: sonarqube
+          #     install: true
+          #     waitForExecution: true
+          #     arguments: >-
+          #       --create-namespace
+          #       --timeout 10m
 
           - task: Kubernetes@1
             displayName: Apply Platform Ingress
@@ -180,15 +180,6 @@ stages:
               useConfigurationFile: true
               configurationType: filePath
               configuration: k8s-config/platform-ingress.yaml
-
-          - task: Kubernetes@1
-            displayName: Get ArgoCD Secret
-            name: argocd
-            inputs:
-              connectionType: None
-              command: get
-              arguments: "secret argocd-initial-admin-secret -n argocd -o jsonpath={.data.password}"
-              outputFormat: json
 
           - task: Bash@3
             displayName: Display Access Info
