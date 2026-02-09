@@ -150,7 +150,8 @@ stages:
           set -euo pipefail
           ALB_NAME="${{ parameters.env }}-alb"
           kubectl apply -f k8s-config/healthz.yaml
-          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/platform-ingress.yaml | kubectl apply -f -
+          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/ingress-platform.yaml | kubectl apply -f -
+          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
           kubectl get ingress -A
 
     - task: AWSShellScript@1

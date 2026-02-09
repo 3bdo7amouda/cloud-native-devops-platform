@@ -33,7 +33,8 @@ setup_cluster() {
 
 cleanup_platform_ingress() {
     log "Removing platform ingress..."
-    kubectl delete -f k8s-config/platform-ingress.yaml --ignore-not-found &>/dev/null || true
+    kubectl delete -f k8s-config/ingress-platform.yaml --ignore-not-found &>/dev/null || true
+    kubectl delete -f k8s-config/ingress-sonarqube.yaml --ignore-not-found &>/dev/null || true
 }
 
 cleanup_target_group_binding() {
