@@ -150,7 +150,7 @@ stages:
           set -euo pipefail
           ALB_NAME="${{ parameters.env }}-alb"
           kubectl apply -f k8s-config/healthz.yaml
-          kubectl apply -f k8s-config/ingress-platform.yaml
+          kubectl apply -f k8s-config/ingress-argocd.yaml
           kubectl apply -f k8s-config/ingress-sonarqube.yaml
           kubectl get ingress -A
 
