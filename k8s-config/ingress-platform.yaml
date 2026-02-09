@@ -7,7 +7,6 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internal
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
-    alb.ingress.kubernetes.io/load-balancer-name: __ALB_NAME__
     alb.ingress.kubernetes.io/group.name: platform
     alb.ingress.kubernetes.io/success-codes: "200-499"
 spec:
