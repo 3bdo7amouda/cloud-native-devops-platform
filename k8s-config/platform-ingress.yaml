@@ -17,13 +17,23 @@ metadata:
   name: platform-ingress
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/load-balancer-name: __ALB_NAME__
+    alb.ingress.kubernetes.io/success-codes: "200-499"
 spec:
-  ingressClassName: nginx
+  ingressClassName: alb
   rules:
   - http:
       paths:
+      - path: /healthz
+        pathType: Prefix
+        backend:
+          service:
+            name: healthz
+            port:
+              number: 80
       - path: /api/argocd
         pathType: Prefix
         backend:

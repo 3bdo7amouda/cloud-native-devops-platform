@@ -48,7 +48,6 @@ stages:
         targetType: inline
         script: |
           set -e
-          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
           helm repo add eks https://aws.github.io/eks-charts
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
@@ -96,24 +95,6 @@ stages:
           kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
 
     - task: HelmDeploy@1
-      displayName: Deploy NGINX Ingress
-      inputs:
-        connectionType: None
-        namespace: ingress-nginx
-        command: upgrade
-        chartType: Name
-        chartName: ingress-nginx/ingress-nginx
-        releaseName: ingress-nginx
-        install: true
-        waitForExecution: true
-        arguments: >-
-          --create-namespace
-          --version 4.14.3
-          --set controller.service.type=ClusterIP
-          --set controller.ingressClassResource.name=nginx
-          --timeout 10m
-
-    - task: HelmDeploy@1
       displayName: Deploy External Secrets
       inputs:
         connectionType: None
@@ -128,55 +109,6 @@ stages:
           --create-namespace
           -f k8s-config/external-secrets-values.yaml
           --timeout 10m
-
-    - task: Bash@3
-      displayName: Wait for NGINX Controller
-      inputs:
-        targetType: inline
-        script: |
-          kubectl -n ingress-nginx wait --for=condition=Available deployment/ingress-nginx-controller --timeout=10m
-
-    - task: Bash@3
-      displayName: Apply ALB Ingress for NGINX
-      inputs:
-        targetType: inline
-        script: |
-          set -euo pipefail
-          ALB_NAME="${{ parameters.env }}-alb"
-          kubectl apply -f k8s-config/healthz.yaml
-          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/alb-ingress.yaml | kubectl apply -f -
-
-    - task: AWSShellScript@1
-      displayName: Link Terraform NLB to ALB
-      inputs:
-        awsCredentials: $(AWS_SERVICE_CONNECTION)
-        regionName: $(AWS_REGION)
-        scriptType: inline
-        inlineScript: |
-          set -euo pipefail
-          TG_NAME="${{ parameters.env }}-nlb-tg"
-          ALB_NAME="${{ parameters.env }}-alb"
-
-          TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
-          if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
-            echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2
-            exit 1
-          fi
-
-          for i in $(seq 1 60); do
-            ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
-            ALB_STATE=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
-            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_STATE" = "active" ]; then
-              break
-            fi
-            sleep 15
-          done
-          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ] || [ "$ALB_STATE" != "active" ]; then
-            echo "ALB $ALB_NAME not active in $(AWS_REGION) (state: ${ALB_STATE:-unknown})" >&2
-            exit 1
-          fi
-
-          aws elbv2 register-targets --target-group-arn "$TG_ARN" --targets Id="$ALB_ARN"
 
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD
@@ -215,5 +147,40 @@ stages:
       inputs:
         targetType: inline
         script: |
-          kubectl apply -f k8s-config/platform-ingress.yaml
+          set -euo pipefail
+          ALB_NAME="${{ parameters.env }}-alb"
+          kubectl apply -f k8s-config/healthz.yaml
+          sed "s|__ALB_NAME__|$ALB_NAME|" k8s-config/platform-ingress.yaml | kubectl apply -f -
           kubectl get ingress -A
+
+    - task: AWSShellScript@1
+      displayName: Link Terraform NLB to ALB
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(AWS_REGION)
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+          TG_NAME="${{ parameters.env }}-nlb-tg"
+          ALB_NAME="${{ parameters.env }}-alb"
+
+          TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
+          if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
+            echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2
+            exit 1
+          fi
+
+          for i in $(seq 1 60); do
+            ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
+            ALB_STATE=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
+            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_STATE" = "active" ]; then
+              break
+            fi
+            sleep 15
+          done
+          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ] || [ "$ALB_STATE" != "active" ]; then
+            echo "ALB $ALB_NAME not active in $(AWS_REGION) (state: ${ALB_STATE:-unknown})" >&2
+            exit 1
+          fi
+
+          aws elbv2 register-targets --target-group-arn "$TG_ARN" --targets Id="$ALB_ARN"
