@@ -167,12 +167,19 @@ resource "aws_acm_certificate" "api_custom_domain" {
   lifecycle { create_before_destroy = true }
 }
 
+locals {
+  api_custom_domain_validation_options = local.enable_api_custom_domain ? tolist(aws_acm_certificate.api_custom_domain[0].domain_validation_options) : []
+}
+
 resource "aws_route53_record" "api_custom_domain_validation" {
-  count   = local.enable_api_custom_domain ? 1 : 0
+  for_each = {
+    for dvo in local.api_custom_domain_validation_options : dvo.domain_name => dvo
+  }
+
   zone_id = var.hosted_zone_id
-  name    = aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_name
-  type    = aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_type
-  records = [aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_value]
+  name    = each.value.resource_record_name
+  type    = each.value.resource_record_type
+  records = [each.value.resource_record_value]
   ttl     = 60
 
   allow_overwrite = true
@@ -181,7 +188,7 @@ resource "aws_route53_record" "api_custom_domain_validation" {
 resource "aws_acm_certificate_validation" "api_custom_domain" {
   count                   = local.enable_api_custom_domain ? 1 : 0
   certificate_arn         = aws_acm_certificate.api_custom_domain[0].arn
-  validation_record_fqdns = [aws_route53_record.api_custom_domain_validation[0].fqdn]
+  validation_record_fqdns = values(aws_route53_record.api_custom_domain_validation)[*].fqdn
 }
 
 resource "aws_apigatewayv2_domain_name" "api_custom_domain" {
