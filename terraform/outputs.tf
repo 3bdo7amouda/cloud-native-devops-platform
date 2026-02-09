@@ -27,6 +27,14 @@ output "api_gateway_endpoint" {
   value = module.vpc.api_gateway_endpoint
 }
 
+output "api_custom_domain" {
+  value = module.vpc.api_custom_domain
+}
+
+output "api_custom_domain_target" {
+  value = module.vpc.api_custom_domain_target
+}
+
 output "cognito_user_pool_id" {
   value = module.vpc.cognito_user_pool_id
 }

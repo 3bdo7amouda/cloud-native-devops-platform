@@ -58,6 +58,7 @@ terraform/
 - **API Gateway** - HTTP API for external access
 - **Cognito** - User pool and client for JWT authentication
 - **VPC Link** - Private connection from API Gateway to EKS
+- **Custom Domain (optional)** - ACM cert + Route53 alias for API Gateway
 
 ---
 
@@ -67,7 +68,7 @@ terraform/
 - AWS CLI configured
 - Terraform v1.6+
 - S3 bucket for state storage
-- Route53 hosted zone (optional)
+- Route53 hosted zone (optional, required for custom domain automation)
 
 ### Deploy Infrastructure
 
@@ -126,6 +127,8 @@ instance_types = ["t3.medium"]
 | `azs` | Availability zones | - |
 | `public_subnet_cidrs` | New public subnet CIDRs | - |
 | `private_subnet_cidrs` | Private subnet CIDRs for EKS | - |
+| `hosted_zone_id` | Route53 hosted zone ID (required for custom domain) | `null` |
+| `api_custom_domain` | Custom domain for API Gateway (e.g., api.example.com) | `null` |
 
 ---
 

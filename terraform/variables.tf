@@ -124,6 +124,18 @@ variable "cognito_user_pool_name" {
 variable "hosted_zone_id" {
   type    = string
   default = null
+  description = "Route53 hosted zone ID. Required if api_custom_domain is set."
+}
+
+variable "api_custom_domain" {
+  type        = string
+  default     = null
+  description = "Custom domain for API Gateway (e.g., api.example.com). When set, ACM cert + Route53 records are created."
+
+  validation {
+    condition     = var.api_custom_domain == null || var.api_custom_domain == "" || !var.enable_api_gateway || var.hosted_zone_id != null
+    error_message = "api_custom_domain requires hosted_zone_id to be set for Route53 validation and alias records."
+  }
 }
 
 variable "enable_api_gateway" {

@@ -40,7 +40,9 @@ variable "tags" {
 variable "cluster_name" { type = string }
 
 variable "hosted_zone_id" {
-  type = string
+  type        = string
+  default     = null
+  description = "Route53 hosted zone ID. Required if api_custom_domain is set."
 }
 
 variable "enable_api_gateway" {
@@ -51,6 +53,17 @@ variable "enable_api_gateway" {
 variable "api_name" {
   type    = string
   default = null
+}
+
+variable "api_custom_domain" {
+  type        = string
+  default     = null
+  description = "Custom domain for API Gateway (e.g., api.example.com). When set, ACM cert + Route53 records are created."
+
+  validation {
+    condition     = var.api_custom_domain == null || var.api_custom_domain == "" || !var.enable_api_gateway || var.hosted_zone_id != null
+    error_message = "api_custom_domain requires hosted_zone_id to be set for Route53 validation and alias records."
+  }
 }
 
 variable "api_integration_uri" {

@@ -16,7 +16,8 @@ resource "aws_internet_gateway" "this" {
 }
 
 locals {
-  igw_id = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
+  igw_id                  = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
+  enable_api_custom_domain = var.enable_api_gateway && var.api_custom_domain != null && var.api_custom_domain != ""
 }
 
 data "aws_subnet" "existing_public" {
@@ -155,6 +156,65 @@ resource "aws_apigatewayv2_stage" "this" {
   api_id      = aws_apigatewayv2_api.this[0].id
   name        = "$default"
   auto_deploy = true
+}
+
+resource "aws_acm_certificate" "api_custom_domain" {
+  count             = local.enable_api_custom_domain ? 1 : 0
+  domain_name       = var.api_custom_domain
+  validation_method = "DNS"
+  tags              = var.tags
+
+  lifecycle { create_before_destroy = true }
+}
+
+resource "aws_route53_record" "api_custom_domain_validation" {
+  count   = local.enable_api_custom_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_name
+  type    = aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_type
+  records = [aws_acm_certificate.api_custom_domain[0].domain_validation_options[0].resource_record_value]
+  ttl     = 60
+
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "api_custom_domain" {
+  count                   = local.enable_api_custom_domain ? 1 : 0
+  certificate_arn         = aws_acm_certificate.api_custom_domain[0].arn
+  validation_record_fqdns = [aws_route53_record.api_custom_domain_validation[0].fqdn]
+}
+
+resource "aws_apigatewayv2_domain_name" "api_custom_domain" {
+  count       = local.enable_api_custom_domain ? 1 : 0
+  domain_name = var.api_custom_domain
+
+  domain_name_configuration {
+    certificate_arn = aws_acm_certificate_validation.api_custom_domain[0].certificate_arn
+    endpoint_type   = "REGIONAL"
+    security_policy = "TLS_1_2"
+  }
+
+  tags = var.tags
+}
+
+resource "aws_apigatewayv2_api_mapping" "api_custom_domain" {
+  count       = local.enable_api_custom_domain ? 1 : 0
+  api_id      = aws_apigatewayv2_api.this[0].id
+  domain_name = aws_apigatewayv2_domain_name.api_custom_domain[0].id
+  stage       = aws_apigatewayv2_stage.this[0].name
+}
+
+resource "aws_route53_record" "api_custom_domain" {
+  count   = local.enable_api_custom_domain ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = var.api_custom_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_apigatewayv2_domain_name.api_custom_domain[0].domain_name_configuration[0].target_domain_name
+    zone_id                = aws_apigatewayv2_domain_name.api_custom_domain[0].domain_name_configuration[0].hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_apigatewayv2_vpc_link" "this" {

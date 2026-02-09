@@ -40,9 +40,10 @@ enable_api_gateway = true
 enable_cognito     = true
 
 api_name               = "nonprod-voting-app-api"
+api_custom_domain      = "3bdo7amouda.tech"
 cognito_user_pool_name = "nonprod-voting-app-users"
 
-hosted_zone_id = "Z05131842BXT9H3SPUW3F"
+hosted_zone_id = "Z07760351QJKUU11GYWQD"
 
 cluster_access_entries = {
   admin_user = {

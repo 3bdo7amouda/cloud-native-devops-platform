@@ -22,6 +22,14 @@ output "api_gateway_endpoint" {
   value = length(aws_apigatewayv2_api.this) > 0 ? aws_apigatewayv2_api.this[0].api_endpoint : null
 }
 
+output "api_custom_domain" {
+  value = length(aws_apigatewayv2_domain_name.api_custom_domain) > 0 ? aws_apigatewayv2_domain_name.api_custom_domain[0].domain_name : null
+}
+
+output "api_custom_domain_target" {
+  value = length(aws_apigatewayv2_domain_name.api_custom_domain) > 0 ? aws_apigatewayv2_domain_name.api_custom_domain[0].domain_name_configuration[0].target_domain_name : null
+}
+
 output "cognito_user_pool_id" {
   value = length(aws_cognito_user_pool.this) > 0 ? aws_cognito_user_pool.this[0].id : null
 }

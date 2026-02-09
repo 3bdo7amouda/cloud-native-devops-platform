@@ -12,6 +12,7 @@ module "vpc" {
   hosted_zone_id        = var.hosted_zone_id
   enable_api_gateway    = var.enable_api_gateway
   api_name              = var.api_name
+  api_custom_domain     = var.api_custom_domain
   api_integration_uri   = var.api_integration_uri
   enable_cognito        = var.enable_cognito
   cognito_user_pool_name = var.cognito_user_pool_name
