@@ -150,8 +150,8 @@ stages:
           set -euo pipefail
           ALB_NAME="${{ parameters.env }}-alb"
           kubectl apply -f k8s-config/healthz.yaml
-          kubectl apply -f k8s-config/ingress-argocd.yaml
-          kubectl apply -f k8s-config/ingress-sonarqube.yaml
+          sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-argocd.yaml | kubectl apply -f -
+          sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
           kubectl get ingress -A
 
     - task: AWSShellScript@1
@@ -163,25 +163,23 @@ stages:
         inlineScript: |
           set -euo pipefail
           TG_NAME="${{ parameters.env }}-nlb-tg"
-          ALB_NAME="${{ parameters.env }}-alb"
+          INGRESS_NS="argocd"
+          INGRESS_NAME="platform-ingress"
 
           TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
-          if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
-            echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2
-            exit 1
-          fi
+          [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ] || { echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2; exit 1; }
 
-          for i in $(seq 1 60); do
-            ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
-            ALB_STATE=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
-            if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_STATE" = "active" ]; then
+          for i in $(seq 1 40); do
+            ALB_HOST=$(kubectl -n "$INGRESS_NS" get ingress "$INGRESS_NAME" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            if [ -n "$ALB_HOST" ] && [ "$ALB_HOST" != "null" ]; then
               break
             fi
-            sleep 15
+            sleep 10
           done
-          if [ -z "${ALB_ARN:-}" ] || [ "$ALB_ARN" = "None" ] || [ "$ALB_STATE" != "active" ]; then
-            echo "ALB $ALB_NAME not active in $(AWS_REGION) (state: ${ALB_STATE:-unknown})" >&2
-            exit 1
-          fi
+
+          [ -n "${ALB_HOST:-}" ] && [ "$ALB_HOST" != "null" ] || { echo "ALB hostname not ready on ingress $INGRESS_NS/$INGRESS_NAME" >&2; exit 1; }
+
+          ALB_ARN=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?DNSName=='$ALB_HOST'].LoadBalancerArn | [0]" --output text)
+          [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] || { echo "ALB for DNS $ALB_HOST not found in $(AWS_REGION)" >&2; exit 1; }
 
           aws elbv2 register-targets --target-group-arn "$TG_ARN" --targets Id="$ALB_ARN"
