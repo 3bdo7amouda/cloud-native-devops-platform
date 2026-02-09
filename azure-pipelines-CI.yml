@@ -12,6 +12,7 @@ variables:
   NEXUS_REGISTRY: 172.30.2.117:5000
   NEXUS_REPO: voting-app
   IMAGE_TAG: $(Build.BuildId)
+  SONARQUBE_SERVICE_CONNECTION: sonarqube
 
 stages:
   - stage: CodeQuality
@@ -26,47 +27,26 @@ stages:
             fetchDepth: 0
             displayName: Checkout Full Repository
 
-          - task: Bash@3
-            displayName: Get SonarQube Token from Kubernetes Secret
+          - task: SonarQubePrepare@5
+            displayName: Prepare SonarQube Analysis
             inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
+              SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
+              scannerMode: CLI
+              configMode: manual
+              cliProjectKey: voting-app
+              cliProjectName: Voting App
+              cliProjectVersion: $(Build.BuildId)
+              cliSources: voting-app
+              extraProperties: |
+                sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
 
-                SECRET_NAME="sonarqube-token"
-                SECRET_NS="sonarqube"
+          - task: SonarQubeAnalyze@5
+            displayName: Run SonarQube Analysis
 
-                SONAR_TOKEN=$(kubectl get secret "$SECRET_NAME" -n "$SECRET_NS" -o jsonpath='{.data.token}' | base64 -d)
-                SONAR_HOST=$(kubectl get secret "$SECRET_NAME" -n "$SECRET_NS" -o jsonpath='{.data.host}' | base64 -d)
-
-                echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]$SONAR_TOKEN"
-                echo "##vso[task.setvariable variable=SONAR_HOST_URL]$SONAR_HOST"
-
-                echo "SonarQube Host: $SONAR_HOST"
-
-          - task: Bash@3
-            displayName: Run SonarQube Scanner
+          - task: SonarQubePublish@5
+            displayName: Publish SonarQube Quality Gate
             inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-
-                # Download SonarScanner if not present
-                if [ ! -d "sonar-scanner" ]; then
-                  wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
-                  unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
-                  mv sonar-scanner-5.0.1.3006-linux sonar-scanner
-                fi
-
-                # Run SonarQube analysis
-                ./sonar-scanner/bin/sonar-scanner \
-                  -Dsonar.projectKey=voting-app \
-                  -Dsonar.projectName="Voting App" \
-                  -Dsonar.projectVersion=$(Build.BuildId) \
-                  -Dsonar.sources=voting-app \
-                  -Dsonar.host.url=$(SONAR_HOST_URL) \
-                  -Dsonar.token=$(SONAR_TOKEN) \
-                  -Dsonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
+              pollingTimeoutSec: 300
 
   - stage: SecurityScan
     displayName: Security Scanning

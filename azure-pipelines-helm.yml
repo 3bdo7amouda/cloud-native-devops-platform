@@ -94,30 +94,21 @@ stages:
           kubectl delete mutatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
           kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
 
-    - task: HelmDeploy@1
-      displayName: Deploy External Secrets
-      inputs:
-        connectionType: None
-        namespace: external-secrets
-        command: upgrade
-        chartType: Name
-        chartName: external-secrets/external-secrets
-        releaseName: external-secrets
-        install: true
-        waitForExecution: true
-        arguments: >-
-          --create-namespace
-          -f k8s-config/external-secrets-values.yaml
-          --timeout 10m
-
-    - task: Bash@3
-      displayName: Configure Vault Secrets Store
-      inputs:
-        targetType: inline
-        script: |
-          set -euo pipefail
-          kubectl apply -f k8s-config/sonarqube-vault-clustersecretstore.yaml
-          kubectl apply -f k8s-config/sonarqube-external-secret.yaml
+    # - task: HelmDeploy@1
+    #   displayName: Deploy External Secrets
+    #   inputs:
+    #     connectionType: None
+    #     namespace: external-secrets
+    #     command: upgrade
+    #     chartType: Name
+    #     chartName: external-secrets/external-secrets
+    #     releaseName: external-secrets
+    #     install: true
+    #     waitForExecution: true
+    #     arguments: >-
+    #       --create-namespace
+    #       -f k8s-config/external-secrets-values.yaml
+    #       --timeout 10m
 
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD
