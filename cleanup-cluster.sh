@@ -4,6 +4,7 @@ set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 CLUSTER_NAME="${CLUSTER_NAME:-}"
+STACK_TAG="${STACK_TAG:-platform}"
 
 log() { echo "[$(date +'%H:%M:%S')] $1"; }
 
@@ -35,11 +36,70 @@ cleanup_platform_ingress() {
     log "Removing platform ingress..."
     kubectl delete -f k8s-config/ingress-platform.yaml --ignore-not-found &>/dev/null || true
     kubectl delete -f k8s-config/ingress-sonarqube.yaml --ignore-not-found &>/dev/null || true
+
+    if kubectl -n argocd get ingress platform-ingress &>/dev/null; then
+        kubectl -n argocd wait --for=delete ingress/platform-ingress --timeout=5m &>/dev/null || true
+    fi
+    if kubectl -n sonarqube get ingress sonarqube-ingress &>/dev/null; then
+        kubectl -n sonarqube wait --for=delete ingress/sonarqube-ingress --timeout=5m &>/dev/null || true
+    fi
 }
 
 cleanup_target_group_binding() {
     log "Removing TargetGroupBinding..."
-    kubectl delete targetgroupbinding ingress-nlb-tgb -n ingress-nginx --ignore-not-found &>/dev/null || true
+    kubectl delete targetgroupbinding --all -A --ignore-not-found &>/dev/null || true
+}
+
+cleanup_aws_load_balancers() {
+    log "Cleaning up AWS load balancers tagged with ingress stack '${STACK_TAG}'..."
+
+    if ! aws sts get-caller-identity &>/dev/null; then
+        log "WARNING: AWS credentials not configured; skipping AWS load balancer cleanup"
+        return
+    fi
+
+    local lb_arns tg_arns
+    lb_arns=$(aws resourcegroupstaggingapi get-resources \
+        --region "$AWS_REGION" \
+        --resource-type-filters elasticloadbalancing:loadbalancer \
+        --tag-filters Key=elbv2.k8s.aws/cluster,Values="$CLUSTER_NAME" Key=ingress.k8s.aws/stack,Values="$STACK_TAG" \
+        --query 'ResourceTagMappingList[].ResourceARN' \
+        --output text 2>/dev/null || true)
+
+    if [[ -n "$lb_arns" ]]; then
+        for arn in $lb_arns; do
+            log "Deleting load balancer: $arn"
+            aws elbv2 delete-load-balancer --region "$AWS_REGION" --load-balancer-arn "$arn" &>/dev/null || true
+        done
+
+        for arn in $lb_arns; do
+            for _ in {1..30}; do
+                if aws elbv2 describe-load-balancers --region "$AWS_REGION" --load-balancer-arns "$arn" &>/dev/null; then
+                    sleep 10
+                else
+                    break
+                fi
+            done
+        done
+    else
+        log "No tagged load balancers found"
+    fi
+
+    tg_arns=$(aws resourcegroupstaggingapi get-resources \
+        --region "$AWS_REGION" \
+        --resource-type-filters elasticloadbalancing:targetgroup \
+        --tag-filters Key=elbv2.k8s.aws/cluster,Values="$CLUSTER_NAME" Key=ingress.k8s.aws/stack,Values="$STACK_TAG" \
+        --query 'ResourceTagMappingList[].ResourceARN' \
+        --output text 2>/dev/null || true)
+
+    if [[ -n "$tg_arns" ]]; then
+        for arn in $tg_arns; do
+            log "Deleting target group: $arn"
+            aws elbv2 delete-target-group --region "$AWS_REGION" --target-group-arn "$arn" &>/dev/null || true
+        done
+    else
+        log "No tagged target groups found"
+    fi
 }
 
 cleanup_helm_releases() {
@@ -96,6 +156,7 @@ main() {
     setup_cluster
     cleanup_platform_ingress
     cleanup_target_group_binding
+    cleanup_aws_load_balancers
     cleanup_helm_releases
     cleanup_service_account
     cleanup_lbc_cluster_resources
