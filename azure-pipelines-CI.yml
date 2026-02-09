@@ -27,7 +27,7 @@ stages:
             fetchDepth: 0
             displayName: Checkout Full Repository
 
-          - task: SonarQubePrepare@5
+          - task: SonarQubePrepare@8
             displayName: Prepare SonarQube Analysis
             inputs:
               SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
@@ -40,10 +40,10 @@ stages:
               extraProperties: |
                 sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
 
-          - task: SonarQubeAnalyze@5
+          - task: SonarQubeAnalyze@8
             displayName: Run SonarQube Analysis
 
-          - task: SonarQubePublish@5
+          - task: SonarQubePublish@8
             displayName: Publish SonarQube Quality Gate
             inputs:
               pollingTimeoutSec: 300
