@@ -39,6 +39,7 @@ stages:
               cliSources: voting-app
               extraProperties: |
                 sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
+                sonar.scanner.skipJreProvisioning=true
 
           - task: SonarQubeAnalyze@8
             displayName: Run SonarQube Analysis
