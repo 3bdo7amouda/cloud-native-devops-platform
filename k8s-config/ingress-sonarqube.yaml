@@ -8,6 +8,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
     alb.ingress.kubernetes.io/group.name: platform
+    alb.ingress.kubernetes.io/healthcheck-path: /api/sonarqube/api/system/status
     alb.ingress.kubernetes.io/success-codes: "200-499"
 spec:
   ingressClassName: alb
