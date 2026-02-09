@@ -12,7 +12,7 @@ variables:
   NEXUS_REGISTRY: 172.30.2.117:5000
   NEXUS_REPO: voting-app
   IMAGE_TAG: $(Build.BuildId)
-  SONARQUBE_SERVICE_CONNECTION: sonarqube
+  SONAR_HOST_URL: http://internal-nonprod-alb-1302725897.us-east-1.elb.amazonaws.com/api/sonarqube
 
 stages:
   - stage: CodeQuality
@@ -27,27 +27,32 @@ stages:
             fetchDepth: 0
             displayName: Checkout Full Repository
 
-          - task: SonarQubePrepare@8
-            displayName: Prepare SonarQube Analysis
+          - task: Bash@3
+            displayName: Run SonarScanner (Community Edition Compatible)
             inputs:
-              SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
-              scannerMode: CLI
-              configMode: manual
-              cliProjectKey: voting-app
-              cliProjectName: Voting App
-              cliProjectVersion: $(Build.BuildId)
-              cliSources: voting-app
-              extraProperties: |
-                sonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
-                sonar.scanner.skipJreProvisioning=true
+              targetType: inline
+              script: |
+                set -euo pipefail
 
-          - task: SonarQubeAnalyze@8
-            displayName: Run SonarQube Analysis
+                : "${SONAR_HOST_URL:?Set SONAR_HOST_URL in Azure DevOps variables}"
+                : "${SONAR_TOKEN:?Set SONAR_TOKEN (secret) in Azure DevOps variables}"
 
-          - task: SonarQubePublish@8
-            displayName: Publish SonarQube Quality Gate
-            inputs:
-              pollingTimeoutSec: 300
+                # Use CLI directly so we don't inject sonar.branch.name (Community Edition limitation).
+                if [ ! -d "sonar-scanner" ]; then
+                  SCANNER_VERSION="5.0.1.3006"
+                  wget -q "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+                  unzip -q "sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
+                  mv "sonar-scanner-${SCANNER_VERSION}-linux" sonar-scanner
+                fi
+
+                ./sonar-scanner/bin/sonar-scanner \
+                  -Dsonar.projectKey=voting-app \
+                  -Dsonar.projectName="Voting App" \
+                  -Dsonar.projectVersion="$(Build.BuildId)" \
+                  -Dsonar.sources=voting-app \
+                  -Dsonar.host.url="$(SONAR_HOST_URL)" \
+                  -Dsonar.token="$(SONAR_TOKEN)" \
+                  -Dsonar.exclusions="**/node_modules/**,**/*.spec.ts,**/*.test.js"
 
   - stage: SecurityScan
     displayName: Security Scanning
