@@ -14,36 +14,8 @@ variables:
   IMAGE_TAG: $(Build.BuildId)
 
 stages:
-  - stage: SecurityScan
-    displayName: Security Scanning
-    jobs:
-      - job: Gitleaks
-        displayName: Gitleaks Secret Scan - Full Repository
-        pool:
-          name: aws-self-hosted
-        steps:
-          - checkout: self
-            fetchDepth: 0
-            displayName: Checkout Full Repository
-            
-          - task: Gitleaks@3
-            displayName: Scan Entire Repository for Secrets
-            inputs:
-              scanlocation: '$(Build.SourcesDirectory)'
-              configtype: 'predefined'
-              predefinedconfigfile: 'GitleaksUdmCombo.toml'
-              scanmode: 'all'
-              reportformat: 'sarif'
-              uploadresults: true
-              reportartifactname: 'CodeAnalysisLogs'
-              taskfail: true
-              verbose: true
-              redact: true
-
   - stage: CodeQuality
     displayName: Code Quality Analysis
-    dependsOn: SecurityScan
-    condition: succeeded()
     jobs:
       - job: SonarQubeAnalysis
         displayName: SonarQube Code Analysis
@@ -60,14 +32,16 @@ stages:
               targetType: inline
               script: |
                 set -euo pipefail
-                
-                # Get token from Kubernetes secret (synced from Vault via ESO)
-                SONAR_TOKEN=$(kubectl get secret sonarqube-token -n default -o jsonpath='{.data.token}' | base64 -d)
-                SONAR_HOST=$(kubectl get secret sonarqube-token -n default -o jsonpath='{.data.host}' | base64 -d)
-                
+
+                SECRET_NAME="sonarqube-token"
+                SECRET_NS="sonarqube"
+
+                SONAR_TOKEN=$(kubectl get secret "$SECRET_NAME" -n "$SECRET_NS" -o jsonpath='{.data.token}' | base64 -d)
+                SONAR_HOST=$(kubectl get secret "$SECRET_NAME" -n "$SECRET_NS" -o jsonpath='{.data.host}' | base64 -d)
+
                 echo "##vso[task.setvariable variable=SONAR_TOKEN;issecret=true]$SONAR_TOKEN"
                 echo "##vso[task.setvariable variable=SONAR_HOST_URL]$SONAR_HOST"
-                
+
                 echo "SonarQube Host: $SONAR_HOST"
 
           - task: Bash@3
@@ -76,14 +50,14 @@ stages:
               targetType: inline
               script: |
                 set -euo pipefail
-                
+
                 # Download SonarScanner if not present
                 if [ ! -d "sonar-scanner" ]; then
                   wget -q https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
                   unzip -q sonar-scanner-cli-5.0.1.3006-linux.zip
                   mv sonar-scanner-5.0.1.3006-linux sonar-scanner
                 fi
-                
+
                 # Run SonarQube analysis
                 ./sonar-scanner/bin/sonar-scanner \
                   -Dsonar.projectKey=voting-app \
@@ -94,9 +68,37 @@ stages:
                   -Dsonar.token=$(SONAR_TOKEN) \
                   -Dsonar.exclusions=**/node_modules/**,**/*.spec.ts,**/*.test.js
 
+  - stage: SecurityScan
+    displayName: Security Scanning
+    dependsOn: CodeQuality
+    condition: succeeded()
+    jobs:
+      - job: Gitleaks
+        displayName: Gitleaks Secret Scan - Full Repository
+        pool:
+          name: aws-self-hosted
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            displayName: Checkout Full Repository
+
+          - task: Gitleaks@3
+            displayName: Scan Entire Repository for Secrets
+            inputs:
+              scanlocation: '$(Build.SourcesDirectory)'
+              configtype: 'predefined'
+              predefinedconfigfile: 'GitleaksUdmCombo.toml'
+              scanmode: 'all'
+              reportformat: 'sarif'
+              uploadresults: true
+              reportartifactname: 'CodeAnalysisLogs'
+              taskfail: true
+              verbose: true
+              redact: true
+
   - stage: Build
     displayName: Build and Push Images
-    dependsOn: CodeQuality
+    dependsOn: SecurityScan
     condition: succeeded()
     jobs:
       - job: BuildVote
@@ -165,7 +167,7 @@ stages:
             inputs:
               command: login
               containerRegistry: nexus
-          
+
           - task: trivy@2
             displayName: Scan Vote Image
             continueOnError: true
@@ -185,7 +187,7 @@ stages:
             inputs:
               command: login
               containerRegistry: nexus
-          
+
           - task: trivy@2
             displayName: Scan Result Image
             continueOnError: true
@@ -205,7 +207,7 @@ stages:
             inputs:
               command: login
               containerRegistry: nexus
-          
+
           - task: trivy@2
             displayName: Scan Worker Image
             continueOnError: true
