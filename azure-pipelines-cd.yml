@@ -1,0 +1,124 @@
+trigger: none
+pr: none
+
+parameters:
+  - name: env
+    displayName: Environment
+    type: string
+    default: nonprod
+    values: [nonprod, prod]
+
+variables:
+  AWS_REGION: us-east-1
+  AWS_SERVICE_CONNECTION: aws-cred
+
+stages:
+- stage: GitOps
+  displayName: GitOps (Argo CD)
+  jobs:
+  - job: Register
+    displayName: Register App + Seed Secrets
+    pool:
+      name: aws-self-hosted
+
+    steps:
+    - checkout: self
+
+    - task: AWSShellScript@1
+      displayName: Configure kubeconfig
+      inputs:
+        awsCredentials: $(AWS_SERVICE_CONNECTION)
+        regionName: $(AWS_REGION)
+        scriptType: inline
+        inlineScript: |
+          set -euo pipefail
+
+          CLUSTER="${{ parameters.env }}-eks"
+          aws eks describe-cluster --name "$CLUSTER" >/dev/null 2>&1 || \
+            CLUSTER=$(aws eks list-clusters --query 'clusters[0]' --output text)
+
+          aws eks update-kubeconfig --region $(AWS_REGION) --name "$CLUSTER"
+
+    - task: Bash@3
+      displayName: Create MongoDB Secret (voting-app)
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+
+          # Store credentials only in Azure DevOps secret variables.
+          # Required variables:
+          # - MONGODB_ATLAS_HOST (non-secret): e.g. "<cluster>.mongodb.net"
+          # - MONGODB_ATLAS_USER (secret)
+          # - MONGODB_ATLAS_PASSWORD (secret)
+          : "${MONGODB_ATLAS_HOST:?Set MONGODB_ATLAS_HOST in pipeline variables}"
+          : "${MONGODB_ATLAS_USER:?Set MONGODB_ATLAS_USER (secret) in pipeline variables}"
+          : "${MONGODB_ATLAS_PASSWORD:?Set MONGODB_ATLAS_PASSWORD (secret) in pipeline variables}"
+
+          PYTHON_BIN="python3"
+          if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            PYTHON_BIN="python"
+          fi
+          if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+            echo "python3 (or python) is required on the agent to URL-encode MongoDB credentials" >&2
+            exit 1
+          fi
+
+          ENC_USER="$("$PYTHON_BIN" -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["MONGODB_ATLAS_USER"], safe=""))')"
+          ENC_PASS="$("$PYTHON_BIN" -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["MONGODB_ATLAS_PASSWORD"], safe=""))')"
+
+          # Accept either a bare host (cluster.mongodb.net) or a mongodb+srv://... URI prefix.
+          HOST="$MONGODB_ATLAS_HOST"
+          HOST="${HOST#mongodb+srv://}"
+          HOST="${HOST#mongodb://}"
+          HOST="${HOST%/}"
+          HOST="${HOST%%/*}"
+
+          MONGODB_URI="mongodb+srv://${ENC_USER}:${ENC_PASS}@${HOST}/?retryWrites=true&w=majority"
+
+          kubectl create namespace voting-app --dry-run=client -o yaml | kubectl apply -f -
+
+          # Create/update the secret idempotently.
+          kubectl -n voting-app create secret generic mongodb-atlas-credentials \
+            --from-literal=connection-string="$MONGODB_URI" \
+            --from-literal=username="$MONGODB_ATLAS_USER" \
+            --from-literal=password="$MONGODB_ATLAS_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl -n voting-app get secret mongodb-atlas-credentials
+
+    - task: Bash@3
+      displayName: Apply Argo CD App Manifests
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+
+          # Ensure CRDs exist before applying Application/AppProject manifests.
+          kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=2m
+          kubectl wait --for=condition=Established crd/appprojects.argoproj.io --timeout=2m
+
+          kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m
+
+          kubectl apply -f argocd/projects/voting-app.yaml
+          kubectl apply -f "argocd/apps/voting-app-${{ parameters.env }}.yaml"
+
+          APP_NAME="voting-app-${{ parameters.env }}"
+          for i in $(seq 1 60); do
+            SYNC="$(kubectl -n argocd get application "$APP_NAME" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+            HEALTH="$(kubectl -n argocd get application "$APP_NAME" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+            echo "Waiting for Argo CD app: sync=${SYNC:-unknown} health=${HEALTH:-unknown}"
+            if [ "$SYNC" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+              echo "Argo CD app is Synced and Healthy"
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "${SYNC:-}" != "Synced" ] || [ "${HEALTH:-}" != "Healthy" ]; then
+            echo "Timed out waiting for Argo CD app to become Synced and Healthy" >&2
+            kubectl -n argocd get application "$APP_NAME"
+            exit 1
+          fi
+
+          kubectl -n argocd get appprojects,applications.argoproj.io

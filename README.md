@@ -37,6 +37,8 @@ A complete end-to-end DevOps platform demonstrating:
 📁 helm-charts/         Kubernetes deployment manifests
 📁 k8s-config/          Platform services (ingress, cert-manager, etc.)
 📄 azure-pipelines-infra.yml    Automated infrastructure pipeline
+📄 azure-pipelines-helm.yml     Install platform tools (ALB controller, Argo CD, SonarQube)
+📄 azure-pipelines-cd.yml       GitOps CD (seed MongoDB secret + register Argo CD app)
 ```
 
 ---

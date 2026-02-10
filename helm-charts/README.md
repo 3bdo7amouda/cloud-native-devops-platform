@@ -17,6 +17,8 @@ Deploy into namespace `voting-app`. The Terraform in this repo creates an EKS Fa
 - AWS Load Balancer Controller installed in the cluster
 - MongoDB Atlas connection string stored as a Kubernetes secret in `voting-app`
 
+### Option A: Seed The Secret Manually
+
 ```bash
 MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority"
 
@@ -24,6 +26,14 @@ kubectl create namespace voting-app --dry-run=client -o yaml | kubectl apply -f 
 kubectl -n voting-app create secret generic mongodb-atlas-credentials \
   --from-literal=connection-string="$MONGODB_URI"
 ```
+
+### Option B: Seed The Secret via Azure Pipeline (Recommended)
+
+Use `azure-pipelines-cd.yml` and set these pipeline variables:
+
+- `MONGODB_ATLAS_HOST` (non-secret): either `<cluster>.mongodb.net` or `mongodb+srv://<cluster>.mongodb.net/`
+- `MONGODB_ATLAS_USER` (secret)
+- `MONGODB_ATLAS_PASSWORD` (secret)
 
 ## Ingress / Routes
 
@@ -58,4 +68,3 @@ kubectl -n voting-app get deploy,svc,ingress
 kubectl -n voting-app logs -l app.kubernetes.io/component=vote --tail=50
 kubectl -n voting-app logs -l app.kubernetes.io/component=result --tail=50
 ```
-
