@@ -22,8 +22,8 @@ A complete end-to-end DevOps platform demonstrating:
 | 1️⃣ | Infrastructure (Terraform) | ✅ Complete |
 | 2️⃣ | CI/CD Pipeline (Azure DevOps) | ✅ Complete |
 | 3️⃣ | Platform Services (Helm) | 🚧 Next |
-| 4️⃣ | Application Deployment | 📋 Planned |
-| 5️⃣ | GitOps with Argo CD | 📋 Planned |
+| 4️⃣ | Application Deployment | 🚧 In Progress |
+| 5️⃣ | GitOps with Argo CD | ✅ Complete |
 
 **Legend:** ✅ Done | 🚧 In Progress | 📋 Planned
 
@@ -36,7 +36,6 @@ A complete end-to-end DevOps platform demonstrating:
 📁 voting-app/          Sample microservices app (Python, Node.js, .NET)
 📁 helm-charts/         Kubernetes deployment manifests
 📁 k8s-config/          Platform services (ingress, cert-manager, etc.)
-📁 vault-config/        Secrets management setup
 📄 azure-pipelines-infra.yml    Automated infrastructure pipeline
 ```
 
@@ -54,13 +53,12 @@ A complete end-to-end DevOps platform demonstrating:
 - **Python/Flask** - Vote frontend
 - **Node.js** - Results display
 - **.NET** - Background worker
-- **Redis** - Message queue
 - **MongoDB** - Database
 
 ### DevOps Tools
 - **Azure DevOps** - CI/CD pipelines
 - **Helm** - Kubernetes package manager
-- **Argo CD** - GitOps (planned)
+- **Argo CD** - GitOps
 - **Vault** - Secrets (planned)
 - **Datadog** - Monitoring (planned)
 
@@ -103,7 +101,7 @@ See detailed guides in each directory:
 
 ```
 Internet → API Gateway (JWT Auth) → VPC Link → NLB 
-    → ingress-nginx → Kubernetes Services → Pods
+    → ALB (AWS Load Balancer Controller) → Kubernetes Services → Pods
 ```
 
 **Components:**
@@ -136,7 +134,6 @@ This project demonstrates:
 | [voting-app/](voting-app/) | Application source code & build |
 | [helm-charts/](helm-charts/) | Kubernetes deployment |
 | [k8s-config/](k8s-config/) | Platform services setup |
-| [vault-config/](vault-config/) | Secrets management |
 
 ---
 

@@ -1,8 +1,12 @@
 # Default values for voting-app
 replicaCount:
   vote: 2
-  worker: 2
+  worker: 0
   result: 2
+
+worker:
+  # Worker is legacy (Redis queue). Keep disabled for the MongoDB-only setup.
+  enabled: false
 
 # Image registry configuration
 image:
@@ -58,21 +62,21 @@ resources:
       memory: "256Mi"
       cpu: "200m"
 
-# Ingress configuration (using NLB + API Gateway)
+# Ingress configuration (ALB via AWS Load Balancer Controller)
 ingress:
-  enabled: true
-  className: nginx
+  enabled: false
+  className: alb
+  annotations: {}
   hosts:
-    - host: vote.yourdomain.com
-      paths:
-        - path: /
+    - paths:
+        - path: /api/vote
           pathType: Prefix
           service: vote
-    - host: result.yourdomain.com
-      paths:
-        - path: /
+          port: 80
+        - path: /api/result
           pathType: Prefix
           service: result
+          port: 80
 
 affinity: {}
 tolerations: []

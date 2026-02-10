@@ -4,10 +4,16 @@ var express = require('express'),
     cookieParser = require('cookie-parser'),
     path = require('path'),
     app = express(),
-    server = require('http').Server(app),
-    io = require('socket.io')(server);
+    server = require('http').Server(app);
 
 var port = process.env.PORT || 4000;
+
+var basePathEnv = process.env.BASE_PATH || '/api/result';
+var basePath = basePathEnv === '/' ? '' : basePathEnv.replace(/\/$/, '');
+
+var io = require('socket.io')(server, {
+  path: basePath + '/socket.io',
+});
 
 io.on('connection', function (socket) {
 
@@ -21,6 +27,7 @@ io.on('connection', function (socket) {
 // MongoDB connection string from environment variable
 var mongoUrl = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 console.log('MongoDB URL configured:', mongoUrl.replace(/:[^:@]+@/, ':****@')); // Hide password
+var dbName = process.env.DATABASE_NAME || 'voting';
 
 // MongoDB client with timeout options
 var client = new MongoClient(mongoUrl, {
@@ -33,7 +40,7 @@ console.log('Connecting to MongoDB...');
 client.connect()
   .then(() => {
     console.log("Connected to MongoDB successfully!");
-    const db = client.db('voting');
+    const db = client.db(dbName);
     const collection = db.collection('votes');
     console.log('Starting to query votes from MongoDB...');
     getVotes(collection);
@@ -77,10 +84,22 @@ function collectVotesFromResult(result) {
 }
 
 app.use(cookieParser());
-app.use(express.urlencoded());
-app.use(express.static(__dirname + '/views'));
+app.use(express.urlencoded({ extended: true }));
 
-app.get('/', function (req, res) {
+// Redirect the bare base path to a trailing-slash URL so relative assets work.
+if (basePath) {
+  app.get(basePath, function (req, res) {
+    res.redirect(302, basePath + '/');
+  });
+}
+
+app.use(basePath || '/', express.static(__dirname + '/views'));
+
+app.get('/healthz', function (req, res) {
+  res.status(200).send('ok');
+});
+
+app.get(basePath ? basePath + '/' : '/', function (req, res) {
   res.sendFile(path.resolve(__dirname + '/views/index.html'));
 });
 

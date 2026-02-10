@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: voting-app
+  namespace: argocd
+spec:
+  description: Voting app workloads deployed to the voting-app namespace
+
+  sourceRepos:
+    - "https://github.com/3bdo7amouda/cloud-native-devops-platform.git"
+
+  destinations:
+    - namespace: voting-app
+      server: https://kubernetes.default.svc
+
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

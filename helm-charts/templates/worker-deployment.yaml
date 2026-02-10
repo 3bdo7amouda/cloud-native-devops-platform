@@ -1,3 +1,4 @@
+{{- if .Values.worker.enabled -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,6 +29,7 @@ spec:
               name: {{ .Values.mongodb.secretName }}
               key: {{ .Values.mongodb.secretKey }}
         - name: DATABASE_NAME
-          value: {{ .Values.mongodb.databaseName }}
+          value: {{ .Values.mongodb.databaseName | quote }}
         resources:
           {{- toYaml .Values.resources.worker | nindent 10 }}
+{{- end }}

@@ -21,8 +21,30 @@ spec:
       - name: vote
         image: "{{ .Values.image.vote.repository }}:{{ .Values.image.vote.tag }}"
         imagePullPolicy: {{ .Values.image.vote.pullPolicy }}
+        env:
+        - name: BASE_PATH
+          value: /api/vote
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.mongodb.secretName }}
+              key: {{ .Values.mongodb.secretKey }}
+        - name: DATABASE_NAME
+          value: {{ .Values.mongodb.databaseName | quote }}
         ports:
         - containerPort: 80
           name: http
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
         resources:
           {{- toYaml .Values.resources.vote | nindent 10 }}

@@ -1,5 +1,20 @@
 var app = angular.module('catsvsdogs', []);
-var socket = io.connect();
+
+function getBasePath() {
+  var baseTag = document.querySelector('base');
+  if (!baseTag || !baseTag.href) {
+    return '';
+  }
+  try {
+    var url = new URL(baseTag.href);
+    return url.pathname.replace(/\/$/, '');
+  } catch (e) {
+    return '';
+  }
+}
+
+var basePath = getBasePath();
+var socket = io({ path: basePath + '/socket.io' });
 
 var bg1 = document.getElementById('background-stats-1');
 var bg2 = document.getElementById('background-stats-2');

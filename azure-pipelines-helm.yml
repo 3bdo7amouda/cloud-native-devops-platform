@@ -126,6 +126,24 @@ stages:
           -f k8s-config/argocd-values.yaml
           --timeout 10m
 
+    - task: Bash@3
+      displayName: Register Voting App in ArgoCD
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+
+          # Ensure CRDs exist before applying Application/AppProject manifests.
+          kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=2m
+          kubectl wait --for=condition=Established crd/appprojects.argoproj.io --timeout=2m
+
+          kubectl -n argocd wait --for=condition=Available deployment/argocd-server --timeout=5m
+
+          kubectl apply -f argocd/projects/voting-app.yaml
+          kubectl apply -f "argocd/apps/voting-app-${{ parameters.env }}.yaml"
+
+          kubectl -n argocd get appprojects,applications.argoproj.io
+
     - task: HelmDeploy@1
       displayName: Deploy SonarQube
       inputs:

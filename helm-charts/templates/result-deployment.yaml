@@ -25,12 +25,26 @@ spec:
         - containerPort: 80
           name: http
         env:
+        - name: BASE_PATH
+          value: /api/result
         - name: MONGODB_URI
           valueFrom:
             secretKeyRef:
               name: {{ .Values.mongodb.secretName }}
               key: {{ .Values.mongodb.secretKey }}
         - name: DATABASE_NAME
-          value: {{ .Values.mongodb.databaseName }}
+          value: {{ .Values.mongodb.databaseName | quote }}
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 20
         resources:
           {{- toYaml .Values.resources.result | nindent 10 }}

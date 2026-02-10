@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: voting-app-nonprod
+  namespace: argocd
+spec:
+  project: voting-app
+
+  source:
+    repoURL: "https://github.com/3bdo7amouda/cloud-native-devops-platform.git"
+    targetRevision: main
+    path: helm-charts
+    helm:
+      releaseName: voting-app
+      valueFiles:
+        - values-nonprod.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: voting-app
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

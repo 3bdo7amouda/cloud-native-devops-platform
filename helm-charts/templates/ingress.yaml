@@ -25,7 +25,9 @@ spec:
   {{- end }}
   rules:
     {{- range .Values.ingress.hosts }}
-    - host: {{ .host | quote }}
+    - {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
       http:
         paths:
           {{- range .paths }}
@@ -35,7 +37,7 @@ spec:
               service:
                 name: {{ include "voting-app.fullname" $ }}-{{ .service }}
                 port:
-                  number: 80
+                  number: {{ default 80 .port }}
           {{- end }}
     {{- end }}
 {{- end }}
