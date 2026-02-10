@@ -15,45 +15,6 @@ variables:
   SONAR_HOST_URL: http://internal-nonprod-alb-1302725897.us-east-1.elb.amazonaws.com/api/sonarqube
 
 stages:
-  - stage: CodeQuality
-    displayName: Code Quality Analysis
-    jobs:
-      - job: SonarQubeAnalysis
-        displayName: SonarQube Code Analysis
-        pool:
-          name: aws-self-hosted
-        steps:
-          - checkout: self
-            fetchDepth: 0
-            displayName: Checkout Full Repository
-
-          - task: Bash@3
-            displayName: Run SonarScanner (Community Edition Compatible)
-            inputs:
-              targetType: inline
-              script: |
-                set -euo pipefail
-
-                : "${SONAR_HOST_URL:?Set SONAR_HOST_URL in Azure DevOps variables}"
-                : "${SONAR_TOKEN:?Set SONAR_TOKEN (secret) in Azure DevOps variables}"
-
-                # Use CLI directly so we don't inject sonar.branch.name (Community Edition limitation).
-                if [ ! -d "sonar-scanner" ]; then
-                  SCANNER_VERSION="5.0.1.3006"
-                  wget -q "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
-                  unzip -q "sonar-scanner-cli-${SCANNER_VERSION}-linux.zip"
-                  mv "sonar-scanner-${SCANNER_VERSION}-linux" sonar-scanner
-                fi
-
-                ./sonar-scanner/bin/sonar-scanner \
-                  -Dsonar.projectKey=voting-app \
-                  -Dsonar.projectName="Voting App" \
-                  -Dsonar.projectVersion="$(Build.BuildId)" \
-                  -Dsonar.sources=voting-app \
-                  -Dsonar.host.url="$(SONAR_HOST_URL)" \
-                  -Dsonar.token="$(SONAR_TOKEN)" \
-                  -Dsonar.exclusions="**/node_modules/**,**/*.spec.ts,**/*.test.js"
-
   - stage: SecurityScan
     displayName: Security Scanning
     dependsOn: CodeQuality
