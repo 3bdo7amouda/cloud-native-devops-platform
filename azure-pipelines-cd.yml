@@ -39,6 +39,10 @@ jobs:
         kubectl -n voting-app create secret generic mongodb-atlas-credentials \
           --from-literal=connection-string="mongodb+srv://${U}:${P}@${HOST}/?retryWrites=true&w=majority" \
           --dry-run=client -o yaml | kubectl apply -f -
+    env:
+      MONGODB_ATLAS_HOST: $(MONGODB_ATLAS_HOST)
+      MONGODB_ATLAS_USER: $(MONGODB_ATLAS_USER)
+      MONGODB_ATLAS_PASSWORD: $(MONGODB_ATLAS_PASSWORD)
 
 - job: apply_argocd
   dependsOn: seed_secret
@@ -59,3 +63,4 @@ jobs:
         kubectl wait --for=condition=Established crd/applications.argoproj.io crd/appprojects.argoproj.io --timeout=2m
         kubectl apply -f argocd/projects/voting-app.yaml
         kubectl apply -f "argocd/apps/voting-app-${{ parameters.env }}.yaml"
+        
