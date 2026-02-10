@@ -17,7 +17,6 @@ variables:
 stages:
   - stage: SecurityScan
     displayName: Security Scanning
-    dependsOn: CodeQuality
     condition: succeeded()
     jobs:
       - job: Gitleaks
