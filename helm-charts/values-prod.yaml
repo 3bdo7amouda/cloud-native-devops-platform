@@ -9,4 +9,4 @@ ingress:
     alb.ingress.kubernetes.io/load-balancer-name: prod-alb
     alb.ingress.kubernetes.io/success-codes: "200-499"
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
-
+    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=300
