@@ -93,6 +93,14 @@ resource "aws_eks_node_group" "platform" {
     workload = "system"
   }
 
+  dynamic "launch_template" {
+    for_each = local.use_insecure_registry ? [1] : []
+    content {
+      id      = aws_launch_template.platform[0].id
+      version = aws_launch_template.platform[0].latest_version
+    }
+  }
+
   tags = merge(
     var.tags,
     {
@@ -109,7 +117,47 @@ resource "aws_eks_node_group" "platform" {
   depends_on = [aws_eks_cluster.this]
 }
 
-# Standard EKS managed add-ons (managed by this module)
+locals {
+  use_insecure_registry = var.insecure_registry_hostport != null && var.insecure_registry_hostport != ""
+}
+
+resource "aws_launch_template" "platform" {
+  count       = local.use_insecure_registry ? 1 : 0
+  name_prefix = "${var.cluster_name}-platform-ng-"
+
+  user_data = base64encode(<<EOF
+#!/bin/bash
+set -euo pipefail
+
+/etc/eks/bootstrap.sh '${var.cluster_name}'
+
+REGISTRY="${var.insecure_registry_hostport}"
+REGISTRY_DIR="/etc/containerd/certs.d/${REGISTRY}"
+
+mkdir -p "${REGISTRY_DIR}"
+cat <<HOSTS > "${REGISTRY_DIR}/hosts.toml"
+server = "http://${REGISTRY}"
+
+[host."http://${REGISTRY}"]
+  capabilities = ["pull", "resolve"]
+HOSTS
+
+if grep -qE '^[[:space:]]*config_path[[:space:]]*=' /etc/containerd/config.toml; then
+  sed -i 's|^[[:space:]]*config_path[[:space:]]*=.*|  config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+else
+  cat <<CFG >> /etc/containerd/config.toml
+
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+CFG
+fi
+
+systemctl restart containerd
+systemctl restart kubelet
+EOF
+  )
+}
+
 resource "aws_eks_addon" "vpc_cni" {
   count = var.enable_addons ? 1 : 0
 

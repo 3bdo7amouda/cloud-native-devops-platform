@@ -18,6 +18,12 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
+variable "insecure_registry_hostport" {
+  description = "Optional host:port for an insecure (HTTP) registry to allow on worker nodes"
+  type        = string
+  default     = null
+}
+
 variable "endpoint_public_access" {
   type    = bool
   default = true
