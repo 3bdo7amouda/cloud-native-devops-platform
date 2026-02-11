@@ -14,6 +14,11 @@ variable "node_role_arn" {
   type = string
 }
 
+variable "fargate_pod_execution_role_arn" {
+  description = "ARN of the Fargate Pod Execution Role"
+  type        = string
+}
+
 variable "private_subnet_ids" {
   type = list(string)
 }

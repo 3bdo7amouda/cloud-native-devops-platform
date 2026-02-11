@@ -9,7 +9,7 @@ trigger:
 pr: none
 
 variables:
-  NEXUS_REGISTRY: 172.30.2.117:5000
+  NEXUS_REGISTRY: nexus.3bdo7amouda.tech
   NEXUS_REPO: voting-app
   IMAGE_TAG: $(Build.BuildId)
   SONAR_HOST_URL: http://internal-nonprod-alb-1302725897.us-east-1.elb.amazonaws.com/api/sonarqube

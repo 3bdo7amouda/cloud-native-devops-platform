@@ -150,14 +150,56 @@ stages:
           set -euo pipefail
           ALB_NAME="${{ parameters.env }}-alb"
           NEXUS_ALB_NAME="${{ parameters.env }}-nexus-alb"
+          TF_DIR="terraform"
+          if [ -z "${NEXUS_CERT_ARN:-}" ] || [ "${NEXUS_CERT_ARN}" = "null" ]; then
+            terraform -chdir="${TF_DIR}" init -input=false >/dev/null
+            NEXUS_CERT_ARN="$(terraform -chdir="${TF_DIR}" output -raw nexus_registry_certificate_arn || true)"
+          fi
+          if [ -z "${NEXUS_DOMAIN:-}" ] || [ "${NEXUS_DOMAIN}" = "null" ]; then
+            NEXUS_DOMAIN="$(terraform -chdir="${TF_DIR}" output -raw nexus_registry_domain || true)"
+          fi
+          if [ -z "${HOSTED_ZONE_ID:-}" ] || [ "${HOSTED_ZONE_ID}" = "null" ]; then
+            HOSTED_ZONE_ID="$(terraform -chdir="${TF_DIR}" output -raw hosted_zone_id || true)"
+          fi
+
           : "${NEXUS_CERT_ARN:?NEXUS_CERT_ARN is required to create HTTPS registry ingress}"
+          : "${NEXUS_DOMAIN:?NEXUS_DOMAIN is required to create DNS alias}"
+          : "${HOSTED_ZONE_ID:?HOSTED_ZONE_ID is required to create DNS alias}"
+
           kubectl apply -f k8s-config/healthz.yaml
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-argocd.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-nexus.yaml | kubectl apply -f -
-          sed -e "s/__NEXUS_ALB_NAME__/${NEXUS_ALB_NAME}/g" -e "s#__NEXUS_CERT_ARN__#${NEXUS_CERT_ARN}#g" k8s-config/ingress-nexus-registry.yaml | kubectl apply -f -
+          sed -e "s/__NEXUS_ALB_NAME__/${NEXUS_ALB_NAME}/g" -e "s#__NEXUS_CERT_ARN__#${NEXUS_CERT_ARN}#g" -e "s/__NEXUS_DOMAIN__/${NEXUS_DOMAIN}/g" k8s-config/ingress-nexus-registry.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-vault.yaml | kubectl apply -f -
           kubectl get ingress -A
+
+          for i in $(seq 1 40); do
+            NEXUS_ALB_DNS=$(aws elbv2 describe-load-balancers --names "$NEXUS_ALB_NAME" --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || true)
+            NEXUS_ALB_ZONE=$(aws elbv2 describe-load-balancers --names "$NEXUS_ALB_NAME" --query 'LoadBalancers[0].CanonicalHostedZoneId' --output text 2>/dev/null || true)
+            NEXUS_ALB_STATE=$(aws elbv2 describe-load-balancers --names "$NEXUS_ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
+            if [ -n "$NEXUS_ALB_DNS" ] && [ "$NEXUS_ALB_DNS" != "None" ] && [ "$NEXUS_ALB_STATE" = "active" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          [ -n "$NEXUS_ALB_DNS" ] && [ "$NEXUS_ALB_DNS" != "None" ] && [ "$NEXUS_ALB_STATE" = "active" ] || { echo "Nexus ALB $NEXUS_ALB_NAME not active in $(AWS_REGION) (state: ${NEXUS_ALB_STATE:-unknown})" >&2; exit 1; }
+
+          aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --change-batch "{
+            \"Changes\": [{
+              \"Action\": \"UPSERT\",
+              \"ResourceRecordSet\": {
+                \"Name\": \"${NEXUS_DOMAIN}\",
+                \"Type\": \"A\",
+                \"AliasTarget\": {
+                  \"HostedZoneId\": \"${NEXUS_ALB_ZONE}\",
+                  \"DNSName\": \"${NEXUS_ALB_DNS}\",
+                  \"EvaluateTargetHealth\": false
+                }
+              }
+            }]
+          }"
 
     - task: AWSShellScript@1
       displayName: Link Terraform NLB to ALB

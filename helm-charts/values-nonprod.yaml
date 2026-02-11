@@ -17,3 +17,6 @@ image:
     repository: nexus.3bdo7amouda.tech/voting-app/worker
   result:
     repository: nexus.3bdo7amouda.tech/voting-app/result
+
+imagePullSecrets:
+  - name: nexus-pull

@@ -10,6 +10,7 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
+  NEXUS_SERVER: nexus.3bdo7amouda.tech
 
 jobs:
 - job: seed_secret
@@ -27,6 +28,7 @@ jobs:
 
         aws eks update-kubeconfig --region $(AWS_REGION) --name "${{ parameters.env }}-eks"
 
+        : "${NEXUS_USERNAME:?}" "${NEXUS_PASSWORD:?}"
         : "${MONGODB_ATLAS_HOST:?}" "${MONGODB_ATLAS_USER:?}" "${MONGODB_ATLAS_PASSWORD:?}"
 
         PY="$(command -v python3 || command -v python)"
@@ -36,10 +38,19 @@ jobs:
         P="$("$PY" -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["MONGODB_ATLAS_PASSWORD"], safe=""))')"
 
         kubectl create ns voting-app --dry-run=client -o yaml | kubectl apply -f -
+        kubectl -n voting-app create secret docker-registry nexus-pull \
+          --docker-server="$(NEXUS_SERVER)" \
+          --docker-username="$(NEXUS_USERNAME)" \
+          --docker-password="$(NEXUS_PASSWORD)" \
+          --docker-email="none@example.com" \
+          --dry-run=client -o yaml | kubectl apply -f -
         kubectl -n voting-app create secret generic mongodb-atlas-credentials \
           --from-literal=connection-string="mongodb+srv://${U}:${P}@${HOST}/?retryWrites=true&w=majority" \
           --dry-run=client -o yaml | kubectl apply -f -
     env:
+      NEXUS_SERVER: $(NEXUS_SERVER)
+      NEXUS_USERNAME: $(NEXUS_USERNAME)
+      NEXUS_PASSWORD: $(NEXUS_PASSWORD)
       MONGODB_ATLAS_HOST: $(MONGODB_ATLAS_HOST)
       MONGODB_ATLAS_USER: $(MONGODB_ATLAS_USER)
       MONGODB_ATLAS_PASSWORD: $(MONGODB_ATLAS_PASSWORD)

@@ -117,6 +117,27 @@ resource "aws_eks_node_group" "platform" {
   depends_on = [aws_eks_cluster.this]
 }
 
+resource "aws_eks_fargate_profile" "voting_app" {
+  cluster_name           = aws_eks_cluster.this.name
+  fargate_profile_name   = "${var.cluster_name}-fargate-voting-app"
+  pod_execution_role_arn = var.fargate_pod_execution_role_arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = "voting-app"
+  }
+
+  tags = merge(
+    var.tags,
+    {
+      Name     = "${var.cluster_name}-fargate-voting-app"
+      Workload = "application"
+    }
+  )
+
+  depends_on = [aws_eks_cluster.this]
+}
+
 locals {
   use_insecure_registry = var.insecure_registry_hostport != null && var.insecure_registry_hostport != ""
 }

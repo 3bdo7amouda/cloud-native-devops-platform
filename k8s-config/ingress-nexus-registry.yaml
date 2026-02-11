@@ -45,7 +45,7 @@ metadata:
 spec:
   ingressClassName: alb
   rules:
-  - host: nexus.3bdo7amouda.tech
+  - host: __NEXUS_DOMAIN__
     http:
       paths:
       - path: /
