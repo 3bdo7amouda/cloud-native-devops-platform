@@ -31,7 +31,6 @@ module "eks" {
   cluster_version                = var.cluster_version
   cluster_role_arn               = module.iam.cluster_role_arn
   node_role_arn                  = module.iam.node_role_arn
-  fargate_pod_execution_role_arn = module.iam.fargate_pod_execution_role_arn
   private_subnet_ids             = module.vpc.private_subnet_ids
   endpoint_public_access         = var.endpoint_public_access
   endpoint_private_access        = var.endpoint_private_access

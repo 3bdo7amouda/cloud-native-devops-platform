@@ -72,8 +72,3 @@ output "node_group_status" {
   description = "Status of the platform node group"
   value       = module.eks.node_group_status
 }
-
-output "fargate_profile_id" {
-  description = "ID of the voting-app Fargate Profile"
-  value       = module.eks.fargate_profile_id
-}

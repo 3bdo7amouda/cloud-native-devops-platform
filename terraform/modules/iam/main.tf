@@ -49,24 +49,3 @@ resource "aws_iam_role_policy_attachment" "ecr_readonly" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
-
-data "aws_iam_policy_document" "fargate_assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["eks-fargate-pods.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "fargate_pod_execution_role" {
-  name               = "${var.cluster_name}-fargate-pod-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.fargate_assume.json
-  tags               = var.tags
-}
-
-resource "aws_iam_role_policy_attachment" "fargate_pod_execution_policy" {
-  role       = aws_iam_role.fargate_pod_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
-}

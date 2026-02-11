@@ -27,8 +27,3 @@ output "node_group_status" {
   description = "Status of the platform node group"
   value       = aws_eks_node_group.platform.status
 }
-
-output "fargate_profile_id" {
-  description = "ID of the voting-app Fargate Profile"
-  value       = aws_eks_fargate_profile.voting_app.id
-}
