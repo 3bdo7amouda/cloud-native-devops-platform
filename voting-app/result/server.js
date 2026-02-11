@@ -2,6 +2,7 @@ var express = require('express'),
     async = require('async'),
     { MongoClient } = require('mongodb'),
     cookieParser = require('cookie-parser'),
+    fs = require('fs'),
     path = require('path'),
     app = express(),
     server = require('http').Server(app);
@@ -10,6 +11,9 @@ var port = process.env.PORT || 4000;
 
 var basePathEnv = process.env.BASE_PATH || '/api/result';
 var basePath = basePathEnv === '/' ? '' : basePathEnv.replace(/\/$/, '');
+var baseHref = basePath ? basePath + '/' : '/';
+var indexTemplate = fs.readFileSync(path.resolve(__dirname + '/views/index.html'), 'utf8');
+var indexHtml = indexTemplate.replace('<base href="./">', '<base href="' + baseHref + '">');
 
 var io = require('socket.io')(server, {
   path: basePath + '/socket.io',
@@ -86,22 +90,23 @@ function collectVotesFromResult(result) {
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
-// Redirect the bare base path to a trailing-slash URL so relative assets work.
-if (basePath) {
-  app.get(basePath, function (req, res) {
-    res.redirect(302, basePath + '/');
-  });
+function sendIndex(req, res) {
+  res.set('Content-Type', 'text/html');
+  res.send(indexHtml);
 }
 
-app.use(basePath || '/', express.static(__dirname + '/views'));
+app.use(basePath || '/', express.static(__dirname + '/views', { redirect: false }));
 
 app.get('/healthz', function (req, res) {
   res.status(200).send('ok');
 });
 
-app.get(basePath ? basePath + '/' : '/', function (req, res) {
-  res.sendFile(path.resolve(__dirname + '/views/index.html'));
-});
+if (basePath) {
+  app.get(basePath, sendIndex);
+  app.get(basePath + '/', sendIndex);
+} else {
+  app.get('/', sendIndex);
+}
 
 server.listen(port, function () {
   var port = server.address().port;
