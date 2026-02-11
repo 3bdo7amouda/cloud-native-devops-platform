@@ -105,13 +105,6 @@ variable "api_name" {
   default = null
 }
 
-# Optional: allow HTTP registry pulls from node group
-variable "insecure_registry_hostport" {
-  type        = string
-  default     = null
-  description = "Optional host:port for an insecure (HTTP) registry to allow on worker nodes"
-}
-
 # Set when NLB exists (e.g. after ingress-nginx); prepared for VPC Link / NLB integration (Pipeline 1)
 variable "api_integration_uri" {
   type    = string

@@ -45,7 +45,6 @@ module "eks" {
   capacity_type                  = var.capacity_type
   cluster_access_entries         = var.cluster_access_entries
   enable_addons                  = true
-  insecure_registry_hostport     = var.insecure_registry_hostport
   ebs_csi_service_account_role_arn = module.irsa.irsa_role_arns["ebs_csi"]
   tags                           = var.tags
 }

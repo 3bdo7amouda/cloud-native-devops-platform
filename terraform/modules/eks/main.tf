@@ -93,14 +93,6 @@ resource "aws_eks_node_group" "platform" {
     workload = "system"
   }
 
-  dynamic "launch_template" {
-    for_each = local.use_insecure_registry ? [1] : []
-    content {
-      id      = aws_launch_template.platform[0].id
-      version = aws_launch_template.platform[0].latest_version
-    }
-  }
-
   tags = merge(
     var.tags,
     {
@@ -136,20 +128,6 @@ resource "aws_eks_fargate_profile" "voting_app" {
   )
 
   depends_on = [aws_eks_cluster.this]
-}
-
-locals {
-  use_insecure_registry = var.insecure_registry_hostport != null && var.insecure_registry_hostport != ""
-}
-
-resource "aws_launch_template" "platform" {
-  count       = local.use_insecure_registry ? 1 : 0
-  name_prefix = "${var.cluster_name}-platform-ng-"
-
-  user_data = base64encode(templatefile("${path.module}/user-data.sh", {
-    cluster_name               = var.cluster_name
-    insecure_registry_hostport = var.insecure_registry_hostport
-  }))
 }
 
 resource "aws_eks_addon" "vpc_cni" {
