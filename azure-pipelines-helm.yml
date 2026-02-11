@@ -170,7 +170,7 @@ stages:
           TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
           [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ] || { echo "Target group $TG_NAME not found in $(AWS_REGION)" >&2; exit 1; }
 
-          for i in $(seq 1 40); do
+          for i in $(seq 1 80); do
             ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)
             ALB_STATE=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].State.Code' --output text 2>/dev/null || true)
             if [ -n "$ALB_ARN" ] && [ "$ALB_ARN" != "None" ] && [ "$ALB_STATE" = "active" ]; then
