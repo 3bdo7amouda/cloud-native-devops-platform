@@ -36,12 +36,16 @@ cleanup_platform_ingress() {
     log "Removing platform ingress..."
     kubectl delete -f k8s-config/ingress-argocd.yaml --ignore-not-found &>/dev/null || true
     kubectl delete -f k8s-config/ingress-sonarqube.yaml --ignore-not-found &>/dev/null || true
+    kubectl delete -f k8s-config/ingress-nexus.yaml --ignore-not-found &>/dev/null || true
 
     if kubectl -n argocd get ingress platform-ingress &>/dev/null; then
         kubectl -n argocd wait --for=delete ingress/platform-ingress --timeout=5m &>/dev/null || true
     fi
     if kubectl -n sonarqube get ingress sonarqube-ingress &>/dev/null; then
         kubectl -n sonarqube wait --for=delete ingress/sonarqube-ingress --timeout=5m &>/dev/null || true
+    fi
+    if kubectl -n nexus get ingress nexus-ingress &>/dev/null; then
+        kubectl -n nexus wait --for=delete ingress/nexus-ingress --timeout=5m &>/dev/null || true
     fi
 }
 
