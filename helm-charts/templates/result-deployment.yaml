@@ -26,9 +26,11 @@ spec:
         image: "{{ .Values.image.result.repository }}:{{ .Values.image.result.tag }}"
         imagePullPolicy: {{ .Values.image.result.pullPolicy }}
         ports:
-        - containerPort: 80
+        - containerPort: {{ .Values.service.result.targetPort }}
           name: http
         env:
+        - name: PORT
+          value: "{{ .Values.service.result.targetPort }}"
         - name: BASE_PATH
           value: /api/result
         - name: MONGODB_URI
