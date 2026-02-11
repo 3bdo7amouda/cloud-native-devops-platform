@@ -35,6 +35,16 @@ output "api_custom_domain_target" {
   value = module.vpc.api_custom_domain_target
 }
 
+output "nexus_registry_domain" {
+  description = "Nexus registry custom domain (if enabled)"
+  value       = module.vpc.nexus_registry_domain
+}
+
+output "nexus_registry_certificate_arn" {
+  description = "ACM certificate ARN for the Nexus registry domain (if enabled)"
+  value       = module.vpc.nexus_registry_certificate_arn
+}
+
 output "cognito_user_pool_id" {
   value = module.vpc.cognito_user_pool_id
 }

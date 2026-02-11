@@ -145,6 +145,17 @@ variable "api_custom_domain" {
   }
 }
 
+variable "nexus_registry_domain" {
+  type        = string
+  default     = null
+  description = "Custom domain for Nexus Docker registry (e.g., nexus.example.com). When set, ACM cert + Route53 validation are created."
+
+  validation {
+    condition     = var.nexus_registry_domain == null || var.nexus_registry_domain == "" || var.hosted_zone_id != null
+    error_message = "nexus_registry_domain requires hosted_zone_id to be set for Route53 validation."
+  }
+}
+
 variable "enable_api_gateway" {
   type    = bool
   default = true

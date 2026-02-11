@@ -16,8 +16,10 @@ resource "aws_internet_gateway" "this" {
 }
 
 locals {
-  igw_id                  = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
-  enable_api_custom_domain = var.enable_api_gateway && var.api_custom_domain != null && var.api_custom_domain != ""
+  igw_id                    = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
+  enable_api_custom_domain  = var.enable_api_gateway && var.api_custom_domain != null && var.api_custom_domain != ""
+  nexus_registry_domain     = var.nexus_registry_domain != null && var.nexus_registry_domain != "" ? var.nexus_registry_domain : (var.api_custom_domain != null && var.api_custom_domain != "" ? "nexus.${var.api_custom_domain}" : null)
+  enable_nexus_registry_cert = var.hosted_zone_id != null && local.nexus_registry_domain != null && local.nexus_registry_domain != ""
 }
 
 data "aws_subnet" "existing_public" {
@@ -222,6 +224,39 @@ resource "aws_route53_record" "api_custom_domain" {
     zone_id                = aws_apigatewayv2_domain_name.api_custom_domain[0].domain_name_configuration[0].hosted_zone_id
     evaluate_target_health = false
   }
+}
+
+resource "aws_acm_certificate" "nexus_registry" {
+  count             = local.enable_nexus_registry_cert ? 1 : 0
+  domain_name       = local.nexus_registry_domain
+  validation_method = "DNS"
+  tags              = var.tags
+
+  lifecycle { create_before_destroy = true }
+}
+
+locals {
+  nexus_registry_validation_options = local.enable_nexus_registry_cert ? tolist(aws_acm_certificate.nexus_registry[0].domain_validation_options) : []
+}
+
+resource "aws_route53_record" "nexus_registry_validation" {
+  for_each = {
+    for dvo in local.nexus_registry_validation_options : dvo.domain_name => dvo
+  }
+
+  zone_id = var.hosted_zone_id
+  name    = each.value.resource_record_name
+  type    = each.value.resource_record_type
+  records = [each.value.resource_record_value]
+  ttl     = 60
+
+  allow_overwrite = true
+}
+
+resource "aws_acm_certificate_validation" "nexus_registry" {
+  count                   = local.enable_nexus_registry_cert ? 1 : 0
+  certificate_arn         = aws_acm_certificate.nexus_registry[0].arn
+  validation_record_fqdns = values(aws_route53_record.nexus_registry_validation)[*].fqdn
 }
 
 resource "aws_apigatewayv2_vpc_link" "this" {
