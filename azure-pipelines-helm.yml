@@ -153,6 +153,7 @@ stages:
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-argocd.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-nexus.yaml | kubectl apply -f -
+          sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-vault.yaml | kubectl apply -f -
           kubectl get ingress -A
 
     - task: AWSShellScript@1
