@@ -1,14 +1,11 @@
-# Default values for voting-app
 replicaCount:
   vote: 2
   worker: 0
   result: 2
 
 worker:
-  # Worker is legacy (Redis queue). Keep disabled for the MongoDB-only setup.
   enabled: false
 
-# Image registry configuration
 image:
   vote:
     repository: 172.30.2.117:5000/voting-app/vote
@@ -23,10 +20,9 @@ image:
     tag: "latest"
     pullPolicy: Always
 
-# Optional: reference image pull secret(s) for private registries
-imagePullSecrets: []
+imagePullSecrets:
+  - name: nexus-pull
 
-# MongoDB Atlas Configuration
 mongodb:
   secretName: mongodb-atlas-credentials
   secretKey: connection-string
@@ -65,7 +61,6 @@ resources:
       memory: "256Mi"
       cpu: "200m"
 
-# Ingress configuration (ALB via AWS Load Balancer Controller)
 ingress:
   enabled: false
   className: alb

@@ -126,6 +126,12 @@ resource "aws_launch_template" "platform" {
   name_prefix = "${var.cluster_name}-platform-ng-"
 
   user_data = base64encode(<<EOF
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+
+--==BOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
 #!/bin/bash
 set -euo pipefail
 
@@ -154,6 +160,8 @@ fi
 
 systemctl restart containerd
 systemctl restart kubelet
+
+--==BOUNDARY==--
 EOF
   )
 }
