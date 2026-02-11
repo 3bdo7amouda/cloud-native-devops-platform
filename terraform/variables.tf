@@ -122,8 +122,8 @@ variable "cognito_user_pool_name" {
 }
 
 variable "hosted_zone_id" {
-  type    = string
-  default = null
+  type        = string
+  default     = null
   description = "Route53 hosted zone ID. Required if api_custom_domain is set."
 }
 

@@ -44,7 +44,7 @@ resource "aws_subnet" "public" {
     { Name = "${var.name_prefix}-public-${var.azs[count.index % length(var.azs)]}" },
     {
       "kubernetes.io/cluster/${var.cluster_name}" = "shared"
-      "kubernetes.io/role/elb"                   = "1"
+      "kubernetes.io/role/elb"                    = "1"
     }
   )
 
@@ -145,9 +145,9 @@ resource "aws_cognito_user_pool" "this" {
 }
 
 resource "aws_cognito_user_pool_client" "this" {
-  count        = (var.enable_api_gateway && var.enable_cognito) ? 1 : 0
-  name         = "${var.cluster_name}-client"
-  user_pool_id = aws_cognito_user_pool.this[0].id
+  count           = (var.enable_api_gateway && var.enable_cognito) ? 1 : 0
+  name            = "${var.cluster_name}-client"
+  user_pool_id    = aws_cognito_user_pool.this[0].id
   generate_secret = false
 }
 
@@ -383,7 +383,7 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
 
 resource "aws_apigatewayv2_integration" "this" {
   count = var.enable_api_gateway ? 1 : 0
-  
+
   api_id             = aws_apigatewayv2_api.this[0].id
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
