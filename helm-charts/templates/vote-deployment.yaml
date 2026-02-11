@@ -17,6 +17,13 @@ spec:
         {{- include "voting-app.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: vote
     spec:
+      {{- if .Values.serviceAccountName }}
+      serviceAccountName: {{ .Values.serviceAccountName }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: vote
         image: "{{ .Values.image.vote.repository }}:{{ .Values.image.vote.tag }}"

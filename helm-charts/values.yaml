@@ -23,6 +23,12 @@ image:
     tag: "latest"
     pullPolicy: Always
 
+# Optional: reference image pull secret(s) for private registries
+imagePullSecrets: []
+
+# Optional: use an existing service account (e.g., with imagePullSecrets attached)
+serviceAccountName: ""
+
 # MongoDB Atlas Configuration
 mongodb:
   secretName: mongodb-atlas-credentials
@@ -77,7 +83,3 @@ ingress:
           pathType: Prefix
           service: result
           port: 80
-
-affinity: {}
-tolerations: []
-nodeSelector: {}
