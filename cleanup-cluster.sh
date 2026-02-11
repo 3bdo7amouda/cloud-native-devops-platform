@@ -37,7 +37,6 @@ cleanup_platform_ingress() {
     kubectl delete -f k8s-config/ingress-argocd.yaml --ignore-not-found &>/dev/null || true
     kubectl delete -f k8s-config/ingress-sonarqube.yaml --ignore-not-found &>/dev/null || true
     kubectl delete -f k8s-config/ingress-nexus.yaml --ignore-not-found &>/dev/null || true
-    kubectl -n nexus delete ingress nexus-registry-ingress --ignore-not-found &>/dev/null || true
     kubectl delete -f k8s-config/ingress-vault.yaml --ignore-not-found &>/dev/null || true
 
     if kubectl -n argocd get ingress platform-ingress &>/dev/null; then

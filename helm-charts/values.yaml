@@ -8,15 +8,15 @@ worker:
 
 image:
   vote:
-    repository: 172.30.2.117:5000/voting-app/vote
+    repository: nexus.3bdo7amouda.tech/voting-app/vote
     tag: "latest"
     pullPolicy: Always
   worker:
-    repository: 172.30.2.117:5000/voting-app/worker
+    repository: nexus.3bdo7amouda.tech/voting-app/worker
     tag: "latest"
     pullPolicy: Always
   result:
-    repository: 172.30.2.117:5000/voting-app/result
+    repository: nexus.3bdo7amouda.tech/voting-app/result
     tag: "latest"
     pullPolicy: Always
 
