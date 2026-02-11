@@ -132,13 +132,13 @@ set -euo pipefail
 /etc/eks/bootstrap.sh '${var.cluster_name}'
 
 REGISTRY="${var.insecure_registry_hostport}"
-REGISTRY_DIR="/etc/containerd/certs.d/${REGISTRY}"
+REGISTRY_DIR="/etc/containerd/certs.d/$${REGISTRY}"
 
-mkdir -p "${REGISTRY_DIR}"
-cat <<HOSTS > "${REGISTRY_DIR}/hosts.toml"
-server = "http://${REGISTRY}"
+mkdir -p "$${REGISTRY_DIR}"
+cat <<HOSTS > "$${REGISTRY_DIR}/hosts.toml"
+server = "http://$${REGISTRY}"
 
-[host."http://${REGISTRY}"]
+[host."http://$${REGISTRY}"]
   capabilities = ["pull", "resolve"]
 HOSTS
 
