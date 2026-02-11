@@ -71,7 +71,7 @@ resource "aws_eks_access_policy_association" "this" {
 
 resource "aws_eks_node_group" "platform" {
   cluster_name    = aws_eks_cluster.this.name
-  node_group_name = "${var.cluster_name}-platform-nodes"
+  node_group_name = "${var.cluster_name}-platform-ng"
   node_role_arn   = var.node_role_arn
   subnet_ids      = var.private_subnet_ids
 
