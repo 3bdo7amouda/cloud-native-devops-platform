@@ -20,10 +20,18 @@ server = "http://$REGISTRY"
   capabilities = ["pull", "resolve"]
 HOSTS
 
-if grep -qE '^[[:space:]]*config_path[[:space:]]*=' /etc/containerd/config.toml; then
-  sed -i 's|^[[:space:]]*config_path[[:space:]]*=.*|  config_path = "/etc/containerd/certs.d"|' /etc/containerd/config.toml
+CONFIG_FILE="$(systemctl show -p ExecStart containerd | sed -n 's/.*--config \\([^ ]*\\).*/\\1/p')"
+if [ -z "$CONFIG_FILE" ]; then
+  CONFIG_FILE="/etc/containerd/config.toml"
+fi
+if [ ! -f "$CONFIG_FILE" ]; then
+  CONFIG_FILE="/etc/containerd/config.toml"
+fi
+
+if grep -qE '^[[:space:]]*config_path[[:space:]]*=' "$CONFIG_FILE"; then
+  sed -i 's|^[[:space:]]*config_path[[:space:]]*=.*|  config_path = "/etc/containerd/certs.d"|' "$CONFIG_FILE"
 else
-  cat <<CFG >> /etc/containerd/config.toml
+  cat <<CFG >> "$CONFIG_FILE"
 
 [plugins."io.containerd.grpc.v1.cri".registry]
   config_path = "/etc/containerd/certs.d"
