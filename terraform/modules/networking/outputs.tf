@@ -40,6 +40,11 @@ output "nexus_registry_certificate_arn" {
   value       = length(aws_acm_certificate_validation.nexus_registry) > 0 ? aws_acm_certificate_validation.nexus_registry[0].certificate_arn : null
 }
 
+output "nexus_registry_alb_dns_name" {
+  description = "DNS name of the Nexus registry ALB (if enabled)"
+  value       = length(aws_lb.nexus_registry) > 0 ? aws_lb.nexus_registry[0].dns_name : null
+}
+
 output "cognito_user_pool_id" {
   value = length(aws_cognito_user_pool.this) > 0 ? aws_cognito_user_pool.this[0].id : null
 }

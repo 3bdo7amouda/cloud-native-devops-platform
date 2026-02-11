@@ -72,6 +72,18 @@ variable "nexus_registry_domain" {
   description = "Custom domain for Nexus Docker registry (e.g., nexus.example.com). When set, ACM cert + Route53 validation are created."
 }
 
+variable "nexus_registry_target_ip" {
+  type        = string
+  default     = null
+  description = "Private IP of the Nexus registry target (EC2) for the ALB target group"
+}
+
+variable "nexus_registry_target_port" {
+  type        = number
+  default     = 5000
+  description = "Port of the Nexus registry target (default 5000)"
+}
+
 variable "api_integration_uri" {
   type    = string
   default = null

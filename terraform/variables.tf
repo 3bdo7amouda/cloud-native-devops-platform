@@ -149,6 +149,18 @@ variable "nexus_registry_domain" {
   }
 }
 
+variable "nexus_registry_target_ip" {
+  type        = string
+  default     = null
+  description = "Private IP of the Nexus registry target (EC2) for the ALB target group"
+}
+
+variable "nexus_registry_target_port" {
+  type        = number
+  default     = 5000
+  description = "Port of the Nexus registry target (default 5000)"
+}
+
 variable "enable_api_gateway" {
   type    = bool
   default = true

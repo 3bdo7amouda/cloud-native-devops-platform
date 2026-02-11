@@ -1,5 +1,9 @@
 data "aws_region" "current" {}
 
+data "aws_vpc" "this" {
+  id = var.vpc_id
+}
+
 data "aws_internet_gateway" "existing" {
   count = var.existing_igw_id != null ? 1 : 0
 
@@ -16,10 +20,11 @@ resource "aws_internet_gateway" "this" {
 }
 
 locals {
-  igw_id                    = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
-  enable_api_custom_domain  = var.enable_api_gateway && var.api_custom_domain != null && var.api_custom_domain != ""
-  nexus_registry_domain     = var.nexus_registry_domain != null && var.nexus_registry_domain != "" ? var.nexus_registry_domain : (var.api_custom_domain != null && var.api_custom_domain != "" ? "nexus.${var.api_custom_domain}" : null)
+  igw_id                     = var.existing_igw_id != null ? data.aws_internet_gateway.existing[0].id : aws_internet_gateway.this[0].id
+  enable_api_custom_domain   = var.enable_api_gateway && var.api_custom_domain != null && var.api_custom_domain != ""
+  nexus_registry_domain      = var.nexus_registry_domain != null && var.nexus_registry_domain != "" ? var.nexus_registry_domain : (var.api_custom_domain != null && var.api_custom_domain != "" ? "nexus.${var.api_custom_domain}" : null)
   enable_nexus_registry_cert = var.hosted_zone_id != null && local.nexus_registry_domain != null && local.nexus_registry_domain != ""
+  enable_nexus_registry_alb  = local.enable_nexus_registry_cert && var.nexus_registry_target_ip != null && var.nexus_registry_target_ip != ""
 }
 
 data "aws_subnet" "existing_public" {
@@ -257,6 +262,100 @@ resource "aws_acm_certificate_validation" "nexus_registry" {
   count                   = local.enable_nexus_registry_cert ? 1 : 0
   certificate_arn         = aws_acm_certificate.nexus_registry[0].arn
   validation_record_fqdns = values(aws_route53_record.nexus_registry_validation)[*].fqdn
+}
+
+resource "aws_security_group" "nexus_registry_alb" {
+  count = local.enable_nexus_registry_alb ? 1 : 0
+
+  name        = "${var.name_prefix}-nexus-registry-alb-sg"
+  description = "Security group for Nexus registry ALB"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.this.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-nexus-registry-alb-sg" })
+}
+
+resource "aws_lb" "nexus_registry" {
+  count              = local.enable_nexus_registry_alb ? 1 : 0
+  name               = substr("${var.name_prefix}-nexus-registry", 0, 32)
+  internal           = true
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.nexus_registry_alb[0].id]
+  subnets            = aws_subnet.private[*].id
+
+  enable_deletion_protection = false
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-nexus-registry" })
+}
+
+resource "aws_lb_target_group" "nexus_registry" {
+  count       = local.enable_nexus_registry_alb ? 1 : 0
+  name        = substr("${var.name_prefix}-nexus-reg-tg", 0, 32)
+  port        = var.nexus_registry_target_port
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    enabled             = true
+    protocol            = "HTTP"
+    port                = "traffic-port"
+    path                = "/v2/"
+    matcher             = "200,401"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    interval            = 15
+    timeout             = 5
+  }
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-nexus-registry-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "nexus_registry" {
+  count            = local.enable_nexus_registry_alb ? 1 : 0
+  target_group_arn = aws_lb_target_group.nexus_registry[0].arn
+  target_id        = var.nexus_registry_target_ip
+  port             = var.nexus_registry_target_port
+}
+
+resource "aws_lb_listener" "nexus_registry_https" {
+  count             = local.enable_nexus_registry_alb ? 1 : 0
+  load_balancer_arn = aws_lb.nexus_registry[0].arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = aws_acm_certificate_validation.nexus_registry[0].certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.nexus_registry[0].arn
+  }
+}
+
+resource "aws_route53_record" "nexus_registry_alias" {
+  count   = local.enable_nexus_registry_alb ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = local.nexus_registry_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.nexus_registry[0].dns_name
+    zone_id                = aws_lb.nexus_registry[0].zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_apigatewayv2_vpc_link" "this" {

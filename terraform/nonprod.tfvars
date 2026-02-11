@@ -47,6 +47,9 @@ hosted_zone_id = "Z07760351QJKUU11GYWQD"
 
 nexus_registry_domain = "nexus.3bdo7amouda.tech"
 
+nexus_registry_target_ip = "172.30.2.117"
+nexus_registry_target_port = 5000
+
 cluster_access_entries = {
   admin_user = {
     principal_arn = "arn:aws:iam::430118836758:user/abdo-cli"

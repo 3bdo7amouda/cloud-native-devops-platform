@@ -45,6 +45,11 @@ output "nexus_registry_certificate_arn" {
   value       = module.vpc.nexus_registry_certificate_arn
 }
 
+output "nexus_registry_alb_dns_name" {
+  description = "DNS name of the Nexus registry ALB (if enabled)"
+  value       = module.vpc.nexus_registry_alb_dns_name
+}
+
 output "cognito_user_pool_id" {
   value = module.vpc.cognito_user_pool_id
 }

@@ -14,6 +14,8 @@ module "vpc" {
   api_name              = var.api_name
   api_custom_domain     = var.api_custom_domain
   nexus_registry_domain = var.nexus_registry_domain
+  nexus_registry_target_ip   = var.nexus_registry_target_ip
+  nexus_registry_target_port = var.nexus_registry_target_port
   api_integration_uri   = var.api_integration_uri
   enable_cognito        = var.enable_cognito
   cognito_user_pool_name = var.cognito_user_pool_name
