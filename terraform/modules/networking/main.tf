@@ -350,6 +350,7 @@ resource "aws_route53_record" "nexus_registry_alias" {
   zone_id = var.hosted_zone_id
   name    = local.nexus_registry_domain
   type    = "A"
+  allow_overwrite = true
 
   alias {
     name                   = aws_lb.nexus_registry[0].dns_name
