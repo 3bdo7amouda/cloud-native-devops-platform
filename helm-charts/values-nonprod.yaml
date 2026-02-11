@@ -9,3 +9,11 @@ ingress:
     alb.ingress.kubernetes.io/load-balancer-name: nonprod-alb
     alb.ingress.kubernetes.io/success-codes: "200-499"
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
+
+image:
+  vote:
+    repository: nexus.3bdo7amouda.tech/voting-app/vote
+  worker:
+    repository: nexus.3bdo7amouda.tech/voting-app/worker
+  result:
+    repository: nexus.3bdo7amouda.tech/voting-app/result

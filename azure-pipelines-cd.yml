@@ -23,7 +23,7 @@ jobs:
       regionName: $(AWS_REGION)
       scriptType: inline
       inlineScript: |
-        set -euo pipefail
+        set -euo pipefail q
 
         aws eks update-kubeconfig --region $(AWS_REGION) --name "${{ parameters.env }}-eks"
 

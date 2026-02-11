@@ -149,10 +149,13 @@ stages:
         script: |
           set -euo pipefail
           ALB_NAME="${{ parameters.env }}-alb"
+          NEXUS_ALB_NAME="${{ parameters.env }}-nexus-alb"
+          : "${NEXUS_CERT_ARN:?NEXUS_CERT_ARN is required to create HTTPS registry ingress}"
           kubectl apply -f k8s-config/healthz.yaml
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-argocd.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-nexus.yaml | kubectl apply -f -
+          sed -e "s/__NEXUS_ALB_NAME__/${NEXUS_ALB_NAME}/g" -e "s#__NEXUS_CERT_ARN__#${NEXUS_CERT_ARN}#g" k8s-config/ingress-nexus-registry.yaml | kubectl apply -f -
           sed "s/__ALB_NAME__/${ALB_NAME}/g" k8s-config/ingress-vault.yaml | kubectl apply -f -
           kubectl get ingress -A
 
