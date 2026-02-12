@@ -152,21 +152,35 @@ stages:
           : "${DATADOG_AGENT_FILE:?DATADOG_AGENT_FILE is required}"
           kubectl -n datadog apply -f "$DATADOG_AGENT_FILE"
 
-    # - task: HelmDeploy@1
-    #   displayName: Deploy External Secrets
-    #   inputs:
-    #     connectionType: None
-    #     namespace: external-secrets
-    #     command: upgrade
-    #     chartType: Name
-    #     chartName: external-secrets/external-secrets
-    #     releaseName: external-secrets
-    #     install: true
-    #     waitForExecution: true
-    #     arguments: >-
-    #       --create-namespace
-    #       -f k8s-config/external-secrets-values.yaml
-    #       --timeout 10m
+    - task: HelmDeploy@1
+      displayName: Deploy External Secrets
+      inputs:
+        connectionType: None
+        namespace: external-secrets
+        command: upgrade
+        chartType: Name
+        chartName: external-secrets/external-secrets
+        releaseName: external-secrets
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          -f k8s-config/external-secrets-values.yaml
+          --timeout 10m
+
+    - task: Bash@3
+      displayName: Apply External Secrets Config
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          kubectl -n external-secrets wait --for=condition=Available deployment/external-secrets --timeout=5m
+          kubectl wait --for=condition=Established crd/clustersecretstores.external-secrets.io --timeout=2m
+          kubectl wait --for=condition=Established crd/externalsecrets.external-secrets.io --timeout=2m
+          kubectl create namespace voting-app --dry-run=client -o yaml | kubectl apply -f -
+          kubectl apply -f k8s-config/vault-k8s-auth-reviewer.yaml
+          kubectl apply -f k8s-config/external-secrets-vault-store.yaml
+          kubectl apply -f k8s-config/external-secrets-voting-app.yaml
 
     - task: HelmDeploy@1
       displayName: Deploy ArgoCD
