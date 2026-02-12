@@ -48,6 +48,12 @@ variable "existing_igw_id" {
   default     = null
 }
 
+variable "existing_public_route_table_id" {
+  type        = string
+  description = "ID of existing public route table to reuse (optional)"
+  default     = null
+}
+
 variable "tags" {
   type    = map(string)
   default = {}

@@ -32,6 +32,11 @@ data "aws_subnet" "existing_public" {
   id    = var.existing_public_subnet_id
 }
 
+data "aws_route_table" "existing_public" {
+  count = var.existing_public_route_table_id != null ? 1 : 0
+  id    = var.existing_public_route_table_id
+}
+
 locals {
   existing_public_az = var.existing_public_subnet_id != null ? data.aws_subnet.existing_public[0].availability_zone : null
   public_subnet_azs = (
@@ -42,6 +47,7 @@ locals {
   ) ? (
     [for az in var.azs : az if az != local.existing_public_az]
   ) : var.azs
+  public_route_table_id = var.existing_public_route_table_id != null ? data.aws_route_table.existing_public[0].id : aws_route_table.public[0].id
 }
 
 resource "aws_subnet" "public" {
@@ -82,12 +88,14 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_route_table" "public" {
+  count  = var.existing_public_route_table_id == null ? 1 : 0
   vpc_id = var.vpc_id
   tags   = merge(var.tags, { Name = "${var.name_prefix}-rt-public" })
 }
 
 resource "aws_route" "public_inet" {
-  route_table_id         = aws_route_table.public.id
+  count                  = var.existing_public_route_table_id == null ? 1 : 0
+  route_table_id         = aws_route_table.public[0].id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = local.igw_id
 }
@@ -95,13 +103,13 @@ resource "aws_route" "public_inet" {
 resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
+  route_table_id = local.public_route_table_id
 }
 
 resource "aws_route_table_association" "existing_public" {
   count          = (var.manage_existing_public_route_association && var.existing_public_subnet_id != null) ? 1 : 0
   subnet_id      = data.aws_subnet.existing_public[0].id
-  route_table_id = aws_route_table.public.id
+  route_table_id = local.public_route_table_id
 }
 
 resource "aws_eip" "nat" {

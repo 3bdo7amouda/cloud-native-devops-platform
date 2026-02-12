@@ -10,6 +10,7 @@ module "vpc" {
   existing_public_subnet_id  = var.existing_public_subnet_id
   manage_existing_public_route_association = var.manage_existing_public_route_association
   existing_igw_id            = var.existing_igw_id
+  existing_public_route_table_id = var.existing_public_route_table_id
   hosted_zone_id             = var.hosted_zone_id
   enable_api_gateway         = var.enable_api_gateway
   api_name                   = var.api_name
