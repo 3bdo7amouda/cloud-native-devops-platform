@@ -174,7 +174,10 @@ stages:
         targetType: inline
         script: |
           set -euo pipefail
-          kubectl -n external-secrets wait --for=condition=Available deployment/external-secrets --timeout=5m
+          kubectl -n external-secrets wait \
+            --for=condition=Available \
+            deployment/external-secrets \
+            --timeout=5m
           kubectl wait --for=condition=Established crd/clustersecretstores.external-secrets.io --timeout=2m
           kubectl wait --for=condition=Established crd/externalsecrets.external-secrets.io --timeout=2m
           kubectl create namespace voting-app --dry-run=client -o yaml | kubectl apply -f -

@@ -1,5 +1,3 @@
-# False positives in git history (no secrets stored).
-# Matches fingerprints produced by gitleaks when scanning all commits.
 ca454667ea07c505d3f95921d9220c6501bb94d6:k8s-config/sonarqube-external-secret.yaml:generic-api-key:19
 ca454667ea07c505d3f95921d9220c6501bb94d6:k8s-config/sonarqube-external-secret.yaml:generic-api-key:23
-
+1c072ce5370095b3484abd8e5613370440b08658:azure-pipelines-helm.yml:generic-api-key:177
