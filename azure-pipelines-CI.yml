@@ -17,8 +17,6 @@ variables:
   AWS_SERVICE_CONNECTION: aws-cred
   SONARQUBE_SERVICE_CONNECTION: sonarqube
   SONAR_PROJECT_KEY: voting-app
-  SONAR_PROJECT_NAME: voting-app
-  SONAR_PROJECT_VERSION: $(Build.BuildId)
 
 stages:
   - stage: SecurityScan
@@ -84,15 +82,12 @@ stages:
             displayName: Prepare SonarQube Analysis
             inputs:
               SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
-              scannerMode: cli
-              configMode: manual
+              scannerMode: 'cli'
+              configMode: 'manual'
               cliProjectKey: $(SONAR_PROJECT_KEY)
-              cliProjectName: $(SONAR_PROJECT_NAME)
-              cliProjectVersion: $(SONAR_PROJECT_VERSION)
               cliSources: voting-app
               extraProperties: |
                 sonar.host.url=$(SONAR_HOST_URL)
-                sonar.exclusions=**/node_modules/**,**/dist/**,**/bin/**,**/obj/**
 
           - task: SonarQubeAnalyze@8
             displayName: Run SonarQube Analysis
