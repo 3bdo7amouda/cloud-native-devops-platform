@@ -1,19 +1,19 @@
-# Voting App Helm Chart
+# 🧰 Voting App Helm Chart
 
 Helm chart for deploying the voting application workloads on Kubernetes.
 
-## Components
+## 🧩 Components
 
 - `vote` deployment and service (Flask)
 - `result` deployment and service (Node.js + Socket.IO)
 - `worker` deployment (disabled by default)
 - Optional shared ALB ingress for `/api/vote` and `/api/result`
 
-## Namespace
+## 🗂️ Namespace
 
 Deploy into namespace `voting-app`. Terraform provisions a Fargate profile targeting this namespace.
 
-## Required Secrets
+## 🔐 Required Secrets
 
 The chart expects these secrets in namespace `voting-app`:
 - `nexus-pull` (`kubernetes.io/dockerconfigjson`) for private image pulls
@@ -21,7 +21,7 @@ The chart expects these secrets in namespace `voting-app`:
 
 These are normally created by External Secrets via manifests in `k8s-config/`.
 
-## Templates
+## 🧱 Templates
 
 `helm-charts/templates/` contains:
 - `_helpers.tpl`: shared naming and labels
@@ -34,7 +34,7 @@ Notes:
 - Resource names are generated with `{{ include "voting-app.fullname" . }}`.
 - `vote` and `result` deployments set `BASE_PATH` environment variables to match ingress routes.
 
-## Install
+## 🚀 Install
 
 ```bash
 helm upgrade --install voting-app ./helm-charts \
@@ -43,7 +43,7 @@ helm upgrade --install voting-app ./helm-charts \
   -f ./helm-charts/values-nonprod.yaml
 ```
 
-## Upgrade with explicit image tag
+## 🏷️ Upgrade with explicit image tag
 
 ```bash
 helm upgrade --install voting-app ./helm-charts \
@@ -54,7 +54,7 @@ helm upgrade --install voting-app ./helm-charts \
   --set image.worker.tag=<tag>
 ```
 
-## Values Files
+## 🧾 Values Files
 
 | File | Purpose |
 | --- | --- |
@@ -62,14 +62,14 @@ helm upgrade --install voting-app ./helm-charts \
 | `values-nonprod.yaml` | Nonprod ingress annotations (`nonprod-alb`) |
 | `values-prod.yaml` | Prod ingress annotations (`prod-alb`) |
 
-## Important Values
+## ⚙️ Important Values
 
 - `worker.enabled` (`false` by default)
 - `image.*.repository`, `image.*.tag`, `imagePullSecrets`
 - `mongodb.secretName`, `mongodb.secretKey`, `mongodb.databaseName`
 - `ingress.enabled`, `ingress.className`, `ingress.annotations`
 
-## Verify
+## ✅ Verify
 
 ```bash
 kubectl -n voting-app get deploy,svc,ingress

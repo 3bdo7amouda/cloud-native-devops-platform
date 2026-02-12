@@ -1,8 +1,8 @@
-# Terraform Infrastructure
+# 🧱 Terraform Infrastructure
 
 Terraform configuration for the platform AWS foundation: VPC networking extensions, IAM roles, EKS cluster, IRSA roles, API Gateway routing, Cognito, and load balancer integration.
 
-## Layout
+## 🗂️ Layout
 
 | Path | Description |
 | --- | --- |
@@ -14,16 +14,16 @@ Terraform configuration for the platform AWS foundation: VPC networking extensio
 | `nonprod.tfvars` | Non-production environment values |
 | `modules/` | Reusable module implementations |
 
-## Root Module Flow
+## 🧭 Root Module Flow
 
 1. `modules/networking` prepares networking and edge resources.
 2. `modules/iam` creates IAM roles for EKS and Fargate.
 3. `modules/eks` creates cluster, node group, Fargate profile, add-ons.
 4. `modules/irsa` creates OIDC provider and IRSA roles.
 
-## Module Details
+## 🧩 Module Details
 
-### `modules/networking`
+### 🌐 `modules/networking`
 
 Creates:
 - Public and private subnets
@@ -49,7 +49,7 @@ Key outputs:
 - `nexus_registry_alb_dns_name`, `nexus_registry_certificate_arn`
 - `cognito_user_pool_id`, `cognito_app_client_id`
 
-### `modules/iam`
+### 🔐 `modules/iam`
 
 Creates:
 - EKS cluster role (`AmazonEKSClusterPolicy`)
@@ -61,7 +61,7 @@ Outputs:
 - `node_role_arn`
 - `fargate_pod_execution_role_arn`
 
-### `modules/eks`
+### ☸️ `modules/eks`
 
 Creates:
 - EKS cluster with access mode `API_AND_CONFIG_MAP`
@@ -76,7 +76,7 @@ Key outputs:
 - `node_group_id`, `node_group_status`
 - `fargate_profile_id`
 
-### `modules/irsa`
+### 🪪 `modules/irsa`
 
 Creates:
 - IAM OIDC provider for EKS issuer URL
@@ -99,14 +99,14 @@ Outputs:
 - `oidc_provider_arn`
 - `irsa_role_arns`
 
-## Prerequisites
+## ✅ Prerequisites
 
 - Terraform `>= 1.6.0`
 - AWS credentials with required permissions
 - Existing VPC and (optionally) existing public subnet/IGW IDs if reusing network assets
 - Existing backend S3 bucket configured in `backend.tf`
 
-## Deploy
+## 🚀 Deploy
 
 ```bash
 cd terraform
@@ -115,14 +115,14 @@ terraform plan -var-file=nonprod.tfvars
 terraform apply -var-file=nonprod.tfvars
 ```
 
-## Destroy
+## 🧹 Destroy
 
 ```bash
 cd terraform
 terraform destroy -var-file=nonprod.tfvars
 ```
 
-## Important Root Inputs
+## 🧾 Important Root Inputs
 
 - `cluster_name`, `cluster_version`
 - `vpc_id`, `azs`, subnet CIDRs
@@ -132,7 +132,7 @@ terraform destroy -var-file=nonprod.tfvars
 - `nexus_registry_domain`, `nexus_registry_target_ip`, `nexus_registry_target_port`
 - `cluster_access_entries`
 
-## Key Root Outputs
+## 📤 Key Root Outputs
 
 - EKS: `cluster_name`, `cluster_endpoint`, `oidc_issuer_url`
 - Identity: `irsa_role_arns`, Cognito IDs
@@ -140,7 +140,7 @@ terraform destroy -var-file=nonprod.tfvars
 - Network entrypoint: `nlb_dns_name`, `nlb_target_group_arn`
 - Compute: `node_group_status`, `fargate_profile_id`
 
-## Notes
+## 📝 Notes
 
 - `nonprod.tfvars` currently sets `cluster_version = "1.35"`.
 - `voting-app` namespace is selected by a dedicated Fargate profile.

@@ -1,8 +1,8 @@
-# Voting App Source
+# 🗳️ Voting App Source
 
 Application services for the demo voting workload.
 
-## Services
+## 🧩 Services
 
 | Path | Stack | Purpose |
 | --- | --- | --- |
@@ -10,14 +10,14 @@ Application services for the demo voting workload.
 | `voting-app/result/` | Node.js + Socket.IO | Reads vote counts and streams live results |
 | `voting-app/worker/` | .NET | Legacy Redis-to-Mongo worker (optional) |
 
-## Data Model
+## 🗃️ Data Model
 
 MongoDB collection: `voting.votes`
 - `vote` currently keeps a single document (`_id = singleton`) for latest-vote behavior.
 - `result` aggregates by `vote` field and publishes percentages via Socket.IO.
 - `worker` (legacy mode) upserts by `voter_id` when consuming from Redis.
 
-## Vote Service (`voting-app/vote`)
+## ✅ Vote Service (`voting-app/vote`)
 
 Endpoints:
 - `GET /healthz`
@@ -35,7 +35,7 @@ UI assets:
 - Template: `voting-app/vote/templates/index.html`
 - Styles: `voting-app/vote/static/stylesheets/style.css`
 
-## Result Service (`voting-app/result`)
+## 📊 Result Service (`voting-app/result`)
 
 Behavior:
 - Connects to MongoDB collection `votes`
@@ -61,7 +61,7 @@ UI assets:
 - `voting-app/result/views/angular.min.js`
 - `voting-app/result/views/stylesheets/style.css`
 
-## Worker Service (`voting-app/worker`) - Legacy
+## 🧪 Worker Service (`voting-app/worker`) - Legacy
 
 Status:
 - Kept for compatibility with the original multi-component pattern.
@@ -77,7 +77,7 @@ Runtime behavior:
 - Expected shape: `{ "vote": "a|b", "voter_id": "..." }`
 - Upserts into MongoDB collection `voting.votes` with `_id = voter_id`
 
-## Build Images
+## 🐳 Build Images
 
 ```bash
 docker build -t voting-app-vote:latest -f voting-app/vote/Dockerfile voting-app/vote
@@ -85,7 +85,7 @@ docker build -t voting-app-result:latest -f voting-app/result/Dockerfile voting-
 docker build -t voting-app-worker:latest -f voting-app/worker/Dockerfile voting-app/worker
 ```
 
-## Local Run
+## ▶️ Local Run
 
 Vote:
 

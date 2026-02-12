@@ -1,8 +1,8 @@
-# Cloud-Native DevOps Platform
+# 🚀 Cloud-Native DevOps Platform
 
 End-to-end DevOps platform for running a microservices voting application on AWS EKS using Terraform, Azure DevOps pipelines, Helm, and Argo CD.
 
-## Overview
+## ✨ Overview
 
 This repository provides:
 - Infrastructure as Code for networking, IAM, EKS, IRSA, API Gateway, and Cognito.
@@ -10,7 +10,7 @@ This repository provides:
 - Helm chart and Kubernetes configuration for platform services and the voting application.
 - Application source code for `vote` (Flask), `result` (Node.js), and `worker` (.NET, optional).
 
-## Architecture Summary
+## 🧭 Architecture Summary
 
 Traffic and control flow:
 - API Gateway HTTP API routes `/api/*`, `/auth/*`, and `/*` to an internal NLB via VPC Link.
@@ -26,7 +26,7 @@ Key base paths served behind the ALB:
 - Nexus proxy: `/api/nexus`
 - Vault proxy: `/api/vault`
 
-## Repository Structure
+## 🗂️ Repository Structure
 
 | Path | Purpose |
 | --- | --- |
@@ -40,13 +40,13 @@ Key base paths served behind the ALB:
 | `azure-pipelines-CI.yml` | Application CI pipeline (build, quality, scans) |
 | `azure-pipelines-cd.yml` | Argo CD apply pipeline |
 
-## Environments
+## 🌍 Environments
 
 - `nonprod` and `prod` are supported by parameterized pipelines.
 - Terraform inputs are provided via `nonprod.tfvars` (and optionally `prod.tfvars`).
 - Helm uses `values-nonprod.yaml` and `values-prod.yaml` for ALB annotations and environment overrides.
 
-## Pipelines
+## 🧪 Pipelines
 
 | Pipeline | Purpose | Notes |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Key base paths served behind the ALB:
 | `azure-pipelines-CI.yml` | Build, scan, and push app images | Triggers on `voting-app/` path changes |
 | `azure-pipelines-cd.yml` | Apply Argo CD project/app | Parameter `env` |
 
-## Platform Tooling (Helm Pipeline)
+## 🧰 Platform Tooling (Helm Pipeline)
 
 Installed and configured:
 - AWS Load Balancer Controller
@@ -69,7 +69,7 @@ Applied manifests from `k8s-config/`:
 - Health check deployment/service for ALB target group
 - External Secrets configuration (Vault-backed)
 
-## Secrets and Registry
+## 🔐 Secrets and Registry
 
 Required secrets in namespace `voting-app`:
 - `nexus-pull` (`kubernetes.io/dockerconfigjson`) for private image pulls
@@ -79,7 +79,7 @@ These are normally created by External Secrets using Vault as the backend. The E
 - `k8s-config/external-secrets-vault-store.yaml`
 - `k8s-config/external-secrets-voting-app.yaml`
 
-## Observability and Quality
+## 📈 Observability and Quality
 
 - Datadog is deployed via Operator and `DatadogAgent` template in `k8s-config/datadog-agent.yaml`.
 - SonarQube is deployed with the web context path `/api/sonarqube`.
@@ -88,14 +88,14 @@ These are normally created by External Secrets using Vault as the backend. The E
   - SonarQube scan for `voting-app`
   - Trivy image scans for `vote`, `result`, and `worker` images
 
-## Security Highlights
+## 🛡️ Security Highlights
 
 - IRSA is used for AWS permissions (no static credentials in pods).
 - EKS cluster access uses access entries and policies.
 - Private subnets are used for cluster workloads.
 - API Gateway and Cognito provide an optional edge authentication layer.
 
-## Quick Start (CLI)
+## ⚡ Quick Start (CLI)
 
 ### 1. Deploy Infrastructure
 
@@ -122,7 +122,7 @@ helm upgrade --install voting-app ./helm-charts \
   -f ./helm-charts/values-nonprod.yaml
 ```
 
-## Operations
+## 🔎 Operations
 
 Common checks:
 
@@ -133,7 +133,7 @@ kubectl -n voting-app logs -l app.kubernetes.io/component=vote --tail=50
 kubectl -n voting-app logs -l app.kubernetes.io/component=result --tail=50
 ```
 
-## Cleanup
+## 🧹 Cleanup
 
 Terraform:
 
@@ -148,7 +148,7 @@ Platform cleanup helper:
 ./cleanup-cluster.sh --confirm
 ```
 
-## Documentation
+## 📚 Documentation
 
 - `terraform/README.md`
 - `helm-charts/README.md`

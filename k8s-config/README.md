@@ -1,8 +1,8 @@
-# Kubernetes Platform Config
+# ☸️ Kubernetes Platform Config
 
 Platform-level manifests and Helm values consumed by the platform deployment pipeline.
 
-## Files
+## 🗂️ Files
 
 | File | Purpose |
 | --- | --- |
@@ -19,16 +19,16 @@ Platform-level manifests and Helm values consumed by the platform deployment pip
 | `external-secrets-vault-store.yaml` | ClusterSecretStore for Vault backend |
 | `external-secrets-voting-app.yaml` | ExternalSecret objects for app pull/Mongo secrets |
 
-## Placeholders Rendered by Pipeline
+## 🧩 Placeholders Rendered by Pipeline
 
 - `__ALB_NAME__` in ingress manifests (`nonprod-alb` or `prod-alb`)
 - `__CLUSTER_NAME__` and `__DATADOG_SITE__` in `datadog-agent.yaml`
 
-## Applied By
+## 🧪 Applied By
 
 `azure-pipelines-helm.yml` applies these resources after deploying Helm charts for platform tools.
 
-## Manual Apply Example
+## 🛠️ Manual Apply Example
 
 ```bash
 kubectl apply -f k8s-config/healthz.yaml
@@ -36,7 +36,7 @@ sed "s/__ALB_NAME__/nonprod-alb/g" k8s-config/ingress-argocd.yaml | kubectl appl
 sed "s/__ALB_NAME__/nonprod-alb/g" k8s-config/ingress-sonarqube.yaml | kubectl apply -f -
 ```
 
-## Notes
+## 📝 Notes
 
 - `ingress-nexus.yaml` and `ingress-vault.yaml` currently point to fixed private IP `172.30.2.117` via `Endpoints` objects.
 - External Secrets expects Vault auth and KV paths to be available exactly as configured.
