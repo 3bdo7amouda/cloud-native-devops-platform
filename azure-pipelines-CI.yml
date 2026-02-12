@@ -89,6 +89,20 @@ stages:
               extraProperties: |
                 sonar.host.url=$(SONAR_HOST_URL)
 
+          - task: Bash@3
+            displayName: Strip branch/PR params (Community)
+            inputs:
+              targetType: inline
+              script: |
+                set -euo pipefail
+                python3 - <<'PY'
+                import json, os
+                params = json.loads(os.environ.get("SONARQUBE_SCANNER_PARAMS", "{}"))
+                for k in ("sonar.branch.name","sonar.pullrequest.key","sonar.pullrequest.branch","sonar.pullrequest.base"):
+                    params.pop(k, None)
+                print(f"##vso[task.setvariable variable=SONARQUBE_SCANNER_PARAMS]{json.dumps(params)}")
+                PY
+
           - task: SonarQubeAnalyze@8
             displayName: Run SonarQube Analysis
             inputs:
