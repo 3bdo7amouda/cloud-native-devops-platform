@@ -36,6 +36,12 @@ variable "existing_public_subnet_id" {
   default     = null
 }
 
+variable "manage_existing_public_route_association" {
+  type        = bool
+  description = "Whether Terraform should manage the route table association for the existing public subnet"
+  default     = true
+}
+
 variable "existing_igw_id" {
   type        = string
   description = "ID of existing Internet Gateway"

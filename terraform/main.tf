@@ -8,6 +8,7 @@ module "vpc" {
   private_subnet_cidrs       = var.private_subnet_cidrs
   cluster_name               = var.cluster_name
   existing_public_subnet_id  = var.existing_public_subnet_id
+  manage_existing_public_route_association = var.manage_existing_public_route_association
   existing_igw_id            = var.existing_igw_id
   hosted_zone_id             = var.hosted_zone_id
   enable_api_gateway         = var.enable_api_gateway

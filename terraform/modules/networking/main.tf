@@ -99,7 +99,7 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table_association" "existing_public" {
-  count          = var.existing_public_subnet_id != null ? 1 : 0
+  count          = (var.manage_existing_public_route_association && var.existing_public_subnet_id != null) ? 1 : 0
   subnet_id      = data.aws_subnet.existing_public[0].id
   route_table_id = aws_route_table.public.id
 }

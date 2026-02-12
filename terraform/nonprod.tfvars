@@ -21,6 +21,7 @@ private_subnet_cidrs = ["172.30.11.0/24", "172.30.12.0/24"]
 
 existing_public_subnet_id = "subnet-00d072cc353c72898"
 existing_igw_id           = "igw-08e3968f4a400eb1f"
+manage_existing_public_route_association = false
 
 cluster_name    = "nonprod-eks"
 cluster_version = "1.35"
