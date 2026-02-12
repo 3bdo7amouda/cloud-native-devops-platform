@@ -32,16 +32,28 @@ data "aws_subnet" "existing_public" {
   id    = var.existing_public_subnet_id
 }
 
+locals {
+  existing_public_az = var.existing_public_subnet_id != null ? data.aws_subnet.existing_public[0].availability_zone : null
+  public_subnet_azs = (
+    var.existing_public_subnet_id != null &&
+    length(var.public_subnet_cidrs) == 1 &&
+    length(var.azs) > 1 &&
+    contains(var.azs, local.existing_public_az)
+  ) ? (
+    [for az in var.azs : az if az != local.existing_public_az]
+  ) : var.azs
+}
+
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = var.vpc_id
   cidr_block              = var.public_subnet_cidrs[count.index]
-  availability_zone       = var.azs[count.index % length(var.azs)]
+  availability_zone       = local.public_subnet_azs[count.index % length(local.public_subnet_azs)]
   map_public_ip_on_launch = true
 
   tags = merge(
     var.tags,
-    { Name = "${var.name_prefix}-public-${var.azs[count.index % length(var.azs)]}" },
+    { Name = "${var.name_prefix}-public-${local.public_subnet_azs[count.index % length(local.public_subnet_azs)]}" },
     {
       "kubernetes.io/cluster/${var.cluster_name}" = "shared"
       "kubernetes.io/role/elb"                    = "1"
