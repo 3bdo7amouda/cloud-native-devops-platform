@@ -1,162 +1,157 @@
-# 🏗️ Cloud-Native DevOps Platform
+# Cloud-Native DevOps Platform
 
-**NTI Graduation Project** | Production-ready EKS platform with full CI/CD automation
+End-to-end DevOps platform for running a microservices voting application on AWS EKS using Terraform, Azure DevOps pipelines, Helm, and Argo CD.
 
----
+## Overview
 
-## 📖 What is This?
+This repository provides:
+- Infrastructure as Code for networking, IAM, EKS, IRSA, API Gateway, and Cognito.
+- CI/CD pipelines for infrastructure, platform tooling, application images, and GitOps deployment.
+- Helm chart and Kubernetes configuration for platform services and the voting application.
+- Application source code for `vote` (Flask), `result` (Node.js), and `worker` (.NET, optional).
 
-A complete end-to-end DevOps platform demonstrating:
-- Infrastructure as Code with Terraform
-- Kubernetes on AWS EKS
-- Automated CI/CD pipelines
-- GitOps deployment patterns
-- Enterprise-grade security & observability
+## Architecture Summary
 
----
+Traffic and control flow:
+- API Gateway HTTP API routes `/api/*`, `/auth/*`, and `/*` to an internal NLB via VPC Link.
+- The NLB forwards to the shared internal ALB created by the AWS Load Balancer Controller.
+- The ALB routes to platform tools (Argo CD, SonarQube, Nexus, Vault) and the voting app.
+- The voting app runs in `voting-app` namespace, which is targeted by an EKS Fargate profile.
 
-## 🎯 Project Status
+Key base paths served behind the ALB:
+- `vote`: `/api/vote`
+- `result`: `/api/result`
+- Argo CD UI: `/api/argocd`
+- SonarQube: `/api/sonarqube`
+- Nexus proxy: `/api/nexus`
+- Vault proxy: `/api/vault`
 
-| Phase | Component | Status |
-|-------|-----------|--------|
-| 1️⃣ | Infrastructure (Terraform) | ✅ Complete |
-| 2️⃣ | CI/CD Pipeline (Azure DevOps) | ✅ Complete |
-| 3️⃣ | Platform Services (Helm) | 🚧 Next |
-| 4️⃣ | Application Deployment | 🚧 In Progress |
-| 5️⃣ | GitOps with Argo CD | ✅ Complete |
+## Repository Structure
 
-**Legend:** ✅ Done | 🚧 In Progress | 📋 Planned
+| Path | Purpose |
+| --- | --- |
+| `terraform/` | Terraform root module for AWS infrastructure |
+| `helm-charts/` | Helm chart for the voting application |
+| `k8s-config/` | Platform manifests and Helm values overlays |
+| `argocd/` | Argo CD AppProject and Application manifests |
+| `voting-app/` | Application source code and service Dockerfiles |
+| `azure-pipelines-infra.yml` | Terraform pipeline |
+| `azure-pipelines-helm.yml` | Platform tooling pipeline |
+| `azure-pipelines-CI.yml` | Application CI pipeline (build, quality, scans) |
+| `azure-pipelines-cd.yml` | Argo CD apply pipeline |
 
----
+## Environments
 
-## 📂 Repository Structure
+- `nonprod` and `prod` are supported by parameterized pipelines.
+- Terraform inputs are provided via `nonprod.tfvars` (and optionally `prod.tfvars`).
+- Helm uses `values-nonprod.yaml` and `values-prod.yaml` for ALB annotations and environment overrides.
 
-```
-📁 terraform/           Infrastructure as Code (AWS EKS, VPC, IAM)
-📁 voting-app/          Sample microservices app (Python, Node.js, .NET)
-📁 helm-charts/         Kubernetes deployment manifests
-📁 k8s-config/          Platform services (ingress, cert-manager, etc.)
-📄 azure-pipelines-infra.yml    Automated infrastructure pipeline
-📄 azure-pipelines-helm.yml     Install platform tools (ALB controller, Argo CD, SonarQube)
-📄 azure-pipelines-cd.yml       GitOps CD (seed MongoDB secret + register Argo CD app)
-```
+## Pipelines
 
----
+| Pipeline | Purpose | Notes |
+| --- | --- | --- |
+| `azure-pipelines-infra.yml` | Terraform init/plan/apply | Parameter `env`, optional `destroy` |
+| `azure-pipelines-helm.yml` | Install platform tools + apply k8s configs | Requires `DATADOG_API_KEY` |
+| `azure-pipelines-CI.yml` | Build, scan, and push app images | Triggers on `voting-app/` path changes |
+| `azure-pipelines-cd.yml` | Apply Argo CD project/app | Parameter `env` |
 
-## 🛠️ Technology Stack
+## Platform Tooling (Helm Pipeline)
 
-### Infrastructure
-- **Terraform** - Infrastructure as Code
-- **AWS EKS** - Kubernetes cluster
-- **VPC, NAT, Subnets** - Network setup
-- **API Gateway + Cognito** - API layer & auth
+Installed and configured:
+- AWS Load Balancer Controller
+- Datadog Operator + DatadogAgent
+- External Secrets
+- Argo CD
+- SonarQube
 
-### Application
-- **Python/Flask** - Vote frontend
-- **Node.js** - Results display
-- **.NET** - Background worker
-- **MongoDB** - Database
+Applied manifests from `k8s-config/`:
+- Ingresses for Argo CD, SonarQube, Nexus, Vault
+- Health check deployment/service for ALB target group
+- External Secrets configuration (Vault-backed)
 
-### DevOps Tools
-- **Azure DevOps** - CI/CD pipelines
-- **Helm** - Kubernetes package manager
-- **Argo CD** - GitOps
-- **Vault** - Secrets (planned)
-- **Datadog** - Monitoring (planned)
+## Secrets and Registry
 
----
+Required secrets in namespace `voting-app`:
+- `nexus-pull` (`kubernetes.io/dockerconfigjson`) for private image pulls
+- `mongodb-atlas-credentials` with key `connection-string`
 
-## 🚀 Quick Start
+These are normally created by External Secrets using Vault as the backend. The External Secrets setup lives in:
+- `k8s-config/external-secrets-vault-store.yaml`
+- `k8s-config/external-secrets-voting-app.yaml`
 
-### Prerequisites
-Tools needed (pre-installed on our CI/CD agent):
-- AWS CLI
-- kubectl
-- Helm
-- Terraform
+## Observability and Quality
 
-### Step 1: Deploy Infrastructure
+- Datadog is deployed via Operator and `DatadogAgent` template in `k8s-config/datadog-agent.yaml`.
+- SonarQube is deployed with the web context path `/api/sonarqube`.
+- CI pipeline runs:
+  - Gitleaks scan on the full repository
+  - SonarQube scan for `voting-app`
+  - Trivy image scans for `vote`, `result`, and `worker` images
+
+## Security Highlights
+
+- IRSA is used for AWS permissions (no static credentials in pods).
+- EKS cluster access uses access entries and policies.
+- Private subnets are used for cluster workloads.
+- API Gateway and Cognito provide an optional edge authentication layer.
+
+## Quick Start (CLI)
+
+### 1. Deploy Infrastructure
+
 ```bash
 cd terraform
 terraform init
+terraform plan -var-file=nonprod.tfvars
 terraform apply -var-file=nonprod.tfvars
 ```
 
-**Or use the Azure Pipeline** for automated deployment.
+### 2. Configure `kubectl`
 
-### Step 2: Access the Cluster
 ```bash
-aws eks update-kubeconfig --name <cluster-name> --region us-east-1
+aws eks update-kubeconfig --region us-east-1 --name nonprod-eks
 kubectl get nodes
 ```
 
-### Step 3: Deploy Applications
-See detailed guides in each directory:
-- [terraform/README.md](terraform/README.md) - Infrastructure setup
-- [voting-app/README.md](voting-app/README.md) - Application build
-- [helm-charts/README.md](helm-charts/README.md) - Deployment guide
-- [k8s-config/README.md](k8s-config/README.md) - Platform services
+### 3. Deploy App via Helm (manual alternative to Argo CD)
 
----
-
-## 📊 Architecture
-
-```
-Internet → API Gateway (JWT Auth) → VPC Link → NLB 
-    → ALB (AWS Load Balancer Controller) → Kubernetes Services → Pods
+```bash
+helm upgrade --install voting-app ./helm-charts \
+  --namespace voting-app \
+  --create-namespace \
+  -f ./helm-charts/values-nonprod.yaml
 ```
 
-**Components:**
-- **VPC** with public/private subnets
-- **EKS Cluster** (v1.32) with managed node groups
-- **API Gateway** for external access with Cognito authentication
-- **NAT Gateway** for outbound internet from private subnets
-- **IRSA** for secure AWS permissions to pods
+## Operations
 
----
+Common checks:
 
-## 🎓 Learning Outcomes
+```bash
+kubectl get ingress -A
+kubectl -n voting-app get deploy,svc
+kubectl -n voting-app logs -l app.kubernetes.io/component=vote --tail=50
+kubectl -n voting-app logs -l app.kubernetes.io/component=result --tail=50
+```
 
-This project demonstrates:
-- ✅ Multi-module Terraform architecture
-- ✅ AWS networking best practices
-- ✅ Kubernetes security with IRSA
-- ✅ CI/CD automation
-- ✅ GitOps workflows
-- ✅ Secrets management
-- ✅ Container orchestration
+## Cleanup
 
----
+Terraform:
 
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [terraform/](terraform/) | Infrastructure deployment guide |
-| [voting-app/](voting-app/) | Application source code & build |
-| [helm-charts/](helm-charts/) | Kubernetes deployment |
-| [k8s-config/](k8s-config/) | Platform services setup |
-
----
-
-## 🗑️ Cleanup
-
-**Using Pipeline:**
-Run pipeline with `destroy: true`
-
-**Using CLI:**
 ```bash
 cd terraform
 terraform destroy -var-file=nonprod.tfvars
 ```
 
----
+Platform cleanup helper:
 
-## 👨‍💻 Author
+```bash
+./cleanup-cluster.sh --confirm
+```
 
-**Abdelrahman Hamouda**  
-NTI Graduation Project - February 2026
+## Documentation
 
----
-
-_Clean, simple, production-ready DevOps platform_ ✨
+- `terraform/README.md`
+- `helm-charts/README.md`
+- `k8s-config/README.md`
+- `argocd/README.md`
+- `voting-app/README.md`

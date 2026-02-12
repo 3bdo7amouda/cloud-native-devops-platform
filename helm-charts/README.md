@@ -1,52 +1,40 @@
 # Voting App Helm Chart
 
-This chart deploys the Voting App into Kubernetes (EKS).
+Helm chart for deploying the voting application workloads on Kubernetes.
 
 ## Components
 
-- `vote` (Flask): writes votes directly to MongoDB Atlas
-- `result` (Node.js + Socket.IO): reads votes from MongoDB Atlas and shows live results
-- `worker` (optional, legacy): disabled by default
+- `vote` deployment and service (Flask)
+- `result` deployment and service (Node.js + Socket.IO)
+- `worker` deployment (disabled by default)
+- Optional shared ALB ingress for `/api/vote` and `/api/result`
 
-## Namespace / Fargate
+## Namespace
 
-Deploy into namespace `voting-app`. The Terraform in this repo creates an EKS Fargate profile that selects `voting-app`, so pods in this namespace run on Fargate.
+Deploy into namespace `voting-app`. Terraform provisions a Fargate profile targeting this namespace.
 
-## Prerequisites
+## Required Secrets
 
-- AWS Load Balancer Controller installed in the cluster
-- MongoDB Atlas connection string stored as a Kubernetes secret in `voting-app`
+The chart expects these secrets in namespace `voting-app`:
+- `nexus-pull` (`kubernetes.io/dockerconfigjson`) for private image pulls
+- `mongodb-atlas-credentials` with key `connection-string`
 
-### Option A: Seed The Secret Manually
+These are normally created by External Secrets via manifests in `k8s-config/`.
 
-```bash
-MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/?retryWrites=true&w=majority"
+## Templates
 
-kubectl create namespace voting-app --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n voting-app create secret generic mongodb-atlas-credentials \
-  --from-literal=connection-string="$MONGODB_URI"
-```
+`helm-charts/templates/` contains:
+- `_helpers.tpl`: shared naming and labels
+- `vote-deployment.yaml`, `vote-service.yaml`
+- `result-deployment.yaml`, `result-service.yaml`
+- `worker-deployment.yaml` (only when `worker.enabled=true`)
+- `ingress.yaml` (only when `ingress.enabled=true`)
 
-### Option B: Seed The Secret via Azure Pipeline (Recommended)
+Notes:
+- Resource names are generated with `{{ include "voting-app.fullname" . }}`.
+- `vote` and `result` deployments set `BASE_PATH` environment variables to match ingress routes.
 
-Use `azure-pipelines-cd.yml` and set these pipeline variables:
-
-- `MONGODB_ATLAS_HOST` (non-secret): either `<cluster>.mongodb.net` or `mongodb+srv://<cluster>.mongodb.net/`
-- `MONGODB_ATLAS_USER` (secret)
-- `MONGODB_ATLAS_PASSWORD` (secret)
-
-## Ingress / Routes
-
-When `ingress.enabled=true`, the chart creates an ALB Ingress routing:
-
-- `/api/vote` -> `vote` service
-- `/api/result` -> `result` service
-
-The apps are configured with `BASE_PATH` so they serve under these prefixes (no ALB path rewrite required).
-
-To share the same ALB as the platform tools, use the same ALB Ingress Group and load balancer name annotations (see `values-nonprod.yaml` and `values-prod.yaml`).
-
-## Install (Manual Helm)
+## Install
 
 ```bash
 helm upgrade --install voting-app ./helm-charts \
@@ -55,11 +43,31 @@ helm upgrade --install voting-app ./helm-charts \
   -f ./helm-charts/values-nonprod.yaml
 ```
 
+## Upgrade with explicit image tag
+
+```bash
+helm upgrade --install voting-app ./helm-charts \
+  --namespace voting-app \
+  -f ./helm-charts/values-nonprod.yaml \
+  --set image.vote.tag=<tag> \
+  --set image.result.tag=<tag> \
+  --set image.worker.tag=<tag>
+```
+
 ## Values Files
 
-- `helm-charts/values.yaml`: defaults (Ingress disabled)
-- `helm-charts/values-nonprod.yaml`: enables ALB Ingress and targets `nonprod-alb`
-- `helm-charts/values-prod.yaml`: enables ALB Ingress and targets `prod-alb`
+| File | Purpose |
+| --- | --- |
+| `values.yaml` | Base defaults (ingress disabled) |
+| `values-nonprod.yaml` | Nonprod ingress annotations (`nonprod-alb`) |
+| `values-prod.yaml` | Prod ingress annotations (`prod-alb`) |
+
+## Important Values
+
+- `worker.enabled` (`false` by default)
+- `image.*.repository`, `image.*.tag`, `imagePullSecrets`
+- `mongodb.secretName`, `mongodb.secretKey`, `mongodb.databaseName`
+- `ingress.enabled`, `ingress.className`, `ingress.annotations`
 
 ## Verify
 
