@@ -12,7 +12,13 @@ variables:
   NEXUS_REGISTRY: nexus.3bdo7amouda.tech
   NEXUS_REPO: voting-app
   IMAGE_TAG: $(Build.BuildId)
-  SONAR_HOST_URL: http://internal-nonprod-alb-1302725897.us-east-1.elb.amazonaws.com/api/sonarqube
+  DEPLOY_ENV: nonprod
+  AWS_REGION: us-east-1
+  AWS_SERVICE_CONNECTION: aws-cred
+  SONARQUBE_SERVICE_CONNECTION: sonarqube
+  SONAR_PROJECT_KEY: voting-app
+  SONAR_PROJECT_NAME: voting-app
+  SONAR_PROJECT_VERSION: $(Build.BuildId)
 
 stages:
   - stage: SecurityScan
@@ -42,9 +48,65 @@ stages:
               verbose: true
               redact: true
 
+  - stage: CodeQuality
+    displayName: SonarQube Scan
+    dependsOn: SecurityScan
+    condition: succeeded()
+    jobs:
+      - job: SonarQube
+        displayName: SonarQube Scan
+        pool:
+          name: aws-self-hosted
+        steps:
+          - checkout: self
+            fetchDepth: 0
+
+          - task: AWSShellScript@1
+            displayName: Resolve SonarQube URL
+            name: sonarUrl
+            inputs:
+              awsCredentials: $(AWS_SERVICE_CONNECTION)
+              regionName: $(AWS_REGION)
+              scriptType: inline
+              inlineScript: |
+                set -euo pipefail
+                ALB_NAME="$(DEPLOY_ENV)-alb"
+                ALB_DNS=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].DNSName' --output text)
+                if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "None" ]; then
+                  echo "ALB $ALB_NAME not found in $(AWS_REGION)" >&2
+                  exit 1
+                fi
+                SONAR_URL="http://$ALB_DNS/api/sonarqube"
+                echo "Resolved SonarQube URL: $SONAR_URL"
+                echo "##vso[task.setvariable variable=SONAR_HOST_URL]$SONAR_URL"
+
+          - task: SonarQubePrepare@8
+            displayName: Prepare SonarQube Analysis
+            inputs:
+              SonarQube: $(SONARQUBE_SERVICE_CONNECTION)
+              scannerMode: cli
+              configMode: manual
+              cliProjectKey: $(SONAR_PROJECT_KEY)
+              cliProjectName: $(SONAR_PROJECT_NAME)
+              cliProjectVersion: $(SONAR_PROJECT_VERSION)
+              cliSources: voting-app
+              extraProperties: |
+                sonar.host.url=$(SONAR_HOST_URL)
+                sonar.exclusions=**/node_modules/**,**/dist/**,**/bin/**,**/obj/**
+
+          - task: SonarQubeAnalyze@8
+            displayName: Run SonarQube Analysis
+            inputs:
+              jdkversion: JAVA_HOME
+
+          - task: SonarQubePublish@8
+            displayName: Publish Quality Gate
+            inputs:
+              pollingTimeoutSec: '300'
+
   - stage: Build
     displayName: Build and Push Images
-    dependsOn: SecurityScan
+    dependsOn: CodeQuality
     condition: succeeded()
     jobs:
       - job: BuildVote
