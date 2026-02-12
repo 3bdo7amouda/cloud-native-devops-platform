@@ -122,6 +122,8 @@ stages:
           kubectl -n datadog create secret generic datadog-secret \
             --from-literal api-key="${DATADOG_API_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -
+      env:
+        DATADOG_API_KEY: $(DATADOG_API_KEY)
 
     - task: Bash@3
       displayName: Render Datadog Agent Manifest
