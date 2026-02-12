@@ -11,6 +11,7 @@ parameters:
 variables:
   AWS_REGION: us-east-1
   AWS_SERVICE_CONNECTION: aws-cred
+  DATADOG_SITE: datadoghq.com
 
 stages:
 - stage: DeployPlatform
@@ -52,6 +53,7 @@ stages:
           helm repo add argo https://argoproj.github.io/argo-helm
           helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube
           helm repo add external-secrets https://charts.external-secrets.io
+          helm repo add datadog https://helm.datadoghq.com
           helm repo update
 
     - task: AWSShellScript@1
@@ -93,6 +95,60 @@ stages:
           kubectl -n kube-system delete secret aws-load-balancer-webhook-tls --ignore-not-found
           kubectl delete mutatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
           kubectl delete validatingwebhookconfiguration aws-load-balancer-webhook --ignore-not-found
+
+    - task: HelmDeploy@1
+      displayName: Install Datadog Operator
+      inputs:
+        connectionType: None
+        namespace: datadog
+        command: upgrade
+        chartType: Name
+        chartName: datadog/datadog-operator
+        releaseName: datadog-operator
+        install: true
+        waitForExecution: true
+        arguments: >-
+          --create-namespace
+          --timeout 10m
+
+    - task: Bash@3
+      displayName: Create Datadog Secret
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          : "${DATADOG_API_KEY:?DATADOG_API_KEY is required}"
+          kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n datadog create secret generic datadog-secret \
+            --from-literal api-key="${DATADOG_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+    - task: Bash@3
+      displayName: Render Datadog Agent Manifest
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          : "${DATADOG_SITE:?DATADOG_SITE is required}"
+          : "${CLUSTER_NAME:?CLUSTER_NAME is required}"
+          OUT_DIR="$(Agent.TempDirectory)/datadog"
+          mkdir -p "$OUT_DIR"
+          sed \
+            -e "s/__CLUSTER_NAME__/${CLUSTER_NAME}/g" \
+            -e "s/__DATADOG_SITE__/${DATADOG_SITE}/g" \
+            k8s-config/datadog-agent.yaml > "$OUT_DIR/datadog-agent.yaml"
+          echo "##vso[task.setvariable variable=DATADOG_AGENT_FILE]$OUT_DIR/datadog-agent.yaml"
+      env:
+        CLUSTER_NAME: $(info.CLUSTER_NAME)
+
+    - task: Bash@3
+      displayName: Apply Datadog Agent
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          : "${DATADOG_AGENT_FILE:?DATADOG_AGENT_FILE is required}"
+          kubectl -n datadog apply -f "$DATADOG_AGENT_FILE"
 
     # - task: HelmDeploy@1
     #   displayName: Deploy External Secrets
