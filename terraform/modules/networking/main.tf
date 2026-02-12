@@ -34,7 +34,7 @@ data "aws_subnet" "existing_public" {
 
 data "aws_route_table" "existing_public" {
   count = var.existing_public_route_table_id != null ? 1 : 0
-  id    = var.existing_public_route_table_id
+  route_table_id = var.existing_public_route_table_id
 }
 
 locals {
